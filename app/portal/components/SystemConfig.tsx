@@ -1,0 +1,127 @@
+"use client";
+import React from "react";
+import { Globe, Save, Loader2, Info, Lock, AlertCircle } from "lucide-react";
+
+export default function SystemConfig({ adminSettings, setAdminSettings, saveSystemSettings, saving, isLocked }: any) {
+    return (
+        <div className="p-4 md:p-6 lg:p-8 max-w-3xl mx-auto w-full pb-24 md:pb-8">
+            
+            {/* Header */}
+            <div className="mb-6">
+                <h2 className="text-xl md:text-2xl font-bold flex items-center gap-2 md:gap-3"><Globe className="text-blue-500 w-5 h-5 md:w-6 md:h-6"/> Global Configuration</h2>
+                <p className="text-gray-500 text-xs md:text-sm mt-1 md:mt-2">Control default deposit addresses for your clients.</p>
+            </div>
+
+            {/* --- QUICK GUIDE --- */}
+            <div className="bg-blue-900/10 border border-blue-500/20 rounded-xl p-4 md:p-5 mb-6 md:mb-8 relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-3 opacity-5"><Info size={80} /></div>
+                <h4 className="text-blue-400 text-[10px] md:text-xs font-bold uppercase tracking-widest mb-2 md:mb-3 flex items-center gap-2">
+                    <Info size={14} className="shrink-0" /> Global Settings Guide
+                </h4>
+                <div className="text-[10px] md:text-[11px] text-gray-400 leading-relaxed relative z-10 space-y-2.5">
+                    <p>• <strong className="text-white">Deposit Wallets:</strong> Addresses entered here act as the default for ALL your referred clients. They will automatically mirror to their "Buy Crypto" and "Deposit" pages.</p>
+                    <p>• <strong className="text-white">Manual Overrides:</strong> If you want a specific client to send funds to a different wallet, you can override this globally by using the "Configure" button in the My Clients tab.</p>
+                </div>
+            </div>
+
+            <div className="space-y-4 md:space-y-6">
+                <div className="bg-[#0f0f11] p-4 md:p-6 rounded-2xl border border-white/10 shadow-lg shadow-black/50">
+                    <h3 className="text-[10px] md:text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 border-b border-white/5 pb-3">Master Deposit Wallets</h3>
+                    
+                    {/* --- ADMIN WARNING --- */}
+                    <div className="bg-red-500/10 border border-red-500/20 p-3 rounded-xl flex gap-2 items-start mb-6">
+                        <AlertCircle size={16} className="text-red-400 shrink-0 mt-0.5" />
+                        <p className="text-[10px] md:text-xs text-red-300 font-medium leading-relaxed">
+                            <strong className="font-bold text-red-400 uppercase tracking-wider">Warning:</strong> Double-check these addresses before saving. These wallets will be immediately visible to all your clients on their deposit dashboards.
+                        </p>
+                    </div>
+
+                    <div className="space-y-5 md:space-y-6">
+                        {/* BTC INPUT */}
+                        <div>
+                            <label className="text-[10px] md:text-[11px] font-bold text-orange-400 mb-2 block uppercase tracking-wide">BITCOIN (BTC) ADDRESS</label>
+                            <div className="flex items-center gap-2 md:gap-3">
+                                <div className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center shrink-0 border border-white/5">
+                                    <img src="https://assets.coingecko.com/coins/images/1/standard/bitcoin.png" alt="BTC" width={20} className="md:w-6 md:h-6"/>
+                                </div>
+                                <input 
+                                    type="text" 
+                                    value={adminSettings.btc_wallet_address || ''} 
+                                    onChange={e => setAdminSettings({...adminSettings, btc_wallet_address: e.target.value})} 
+                                    placeholder="Enter your BTC wallet address..." 
+                                    disabled={isLocked}
+                                    className="w-full bg-black border border-white/10 h-12 px-3 md:px-4 rounded-xl text-white font-mono text-xs md:text-sm focus:border-orange-500 outline-none transition disabled:opacity-50"
+                                />
+                            </div>
+                        </div>
+
+                        {/* ETH INPUT */}
+                        <div>
+                            <label className="text-[10px] md:text-[11px] font-bold text-blue-400 mb-2 block uppercase tracking-wide">ETHEREUM (ERC20) ADDRESS</label>
+                            <div className="flex items-center gap-2 md:gap-3">
+                                <div className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center shrink-0 border border-white/5">
+                                    <img src="https://assets.coingecko.com/coins/images/279/standard/ethereum.png" alt="ETH" width={20} className="md:w-6 md:h-6"/>
+                                </div>
+                                <input 
+                                    type="text" 
+                                    value={adminSettings.eth_wallet_address || ''} 
+                                    onChange={e => setAdminSettings({...adminSettings, eth_wallet_address: e.target.value})} 
+                                    placeholder="Enter your ETH wallet address..." 
+                                    disabled={isLocked}
+                                    className="w-full bg-black border border-white/10 h-12 px-3 md:px-4 rounded-xl text-white font-mono text-xs md:text-sm focus:border-blue-500 outline-none transition disabled:opacity-50"
+                                />
+                            </div>
+                        </div>
+
+                        {/* USDT INPUT */}
+                        <div>
+                            <label className="text-[10px] md:text-[11px] font-bold text-green-400 mb-2 block uppercase tracking-wide">USDT (ERC20/TRC20) ADDRESS</label>
+                            <div className="flex items-center gap-2 md:gap-3">
+                                <div className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center shrink-0 border border-white/5">
+                                    <img src="https://assets.coingecko.com/coins/images/325/standard/Tether.png" alt="USDT" width={20} className="md:w-6 md:h-6"/>
+                                </div>
+                                <input 
+                                    type="text" 
+                                    value={adminSettings.usdt_wallet_address || ''} 
+                                    onChange={e => setAdminSettings({...adminSettings, usdt_wallet_address: e.target.value})} 
+                                    placeholder="Enter your USDT wallet address..." 
+                                    disabled={isLocked}
+                                    className="w-full bg-black border border-white/10 h-12 px-3 md:px-4 rounded-xl text-white font-mono text-xs md:text-sm focus:border-green-500 outline-none transition disabled:opacity-50"
+                                />
+                            </div>
+                        </div>
+
+                        {/* USDC INPUT */}
+                        <div>
+                            <label className="text-[10px] md:text-[11px] font-bold text-teal-400 mb-2 block uppercase tracking-wide">USDC (ERC20) ADDRESS</label>
+                            <div className="flex items-center gap-2 md:gap-3">
+                                <div className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center shrink-0 border border-white/5">
+                                    <img src="https://assets.coingecko.com/coins/images/6319/standard/usdc.png" alt="USDC" width={20} className="md:w-6 md:h-6"/>
+                                </div>
+                                <input 
+                                    type="text" 
+                                    value={adminSettings.usdc_wallet_address || ''} 
+                                    onChange={e => setAdminSettings({...adminSettings, usdc_wallet_address: e.target.value})} 
+                                    placeholder="Enter your USDC wallet address..." 
+                                    disabled={isLocked}
+                                    className="w-full bg-black border border-white/10 h-12 px-3 md:px-4 rounded-xl text-white font-mono text-xs md:text-sm focus:border-teal-500 outline-none transition disabled:opacity-50"
+                                />
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+                
+                {/* LOCKED: SAVE BUTTON */}
+                <button 
+                    onClick={saveSystemSettings} 
+                    disabled={saving || isLocked} 
+                    className="w-full h-12 md:h-14 bg-white text-black font-bold rounded-xl active:bg-gray-300 md:hover:bg-gray-200 transition-all flex items-center justify-center gap-2 md:gap-3 shadow-[0_0_20px_rgba(255,255,255,0.1)] disabled:opacity-50 disabled:cursor-not-allowed disabled:grayscale active:scale-[0.98] text-[11px] md:text-xs uppercase tracking-widest"
+                >
+                    {isLocked ? <Lock size={16} className="md:w-5 md:h-5"/> : (saving ? <Loader2 className="animate-spin w-4 h-4 md:w-5 md:h-5" /> : <Save size={16} className="md:w-5 md:h-5" />)} 
+                    {isLocked ? 'ACCOUNT LOCKED (READ ONLY)' : 'SAVE GLOBAL CONFIGURATION'}
+                </button>
+            </div>
+        </div>
+    );
+}

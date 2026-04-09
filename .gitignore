@@ -1,0 +1,12 @@
+# Environment variables
+.env*.local
+
+# Dependencies
+/node_modules
+
+# Build output
+/.next
+/out
+
+# OS files
+.DS_Store
