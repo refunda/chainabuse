@@ -2,299 +2,255 @@
 
 import React, { useState, useEffect, Suspense } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Lock, Mail, User, Phone, Loader2, AlertCircle, Eye, EyeOff, Server, Terminal, ChevronDown, CheckCircle2, ServerCrash, ShieldAlert, Fingerprint, Activity, Globe, Zap } from "lucide-react";
-import { useRouter, useSearchParams } from 'next/navigation';
+import { Lock, Mail, User, Phone, Loader2, AlertCircle, Eye, EyeOff, Server, CheckCircle2, XCircle } from "lucide-react";
+import { useRouter, useSearchParams, useParams } from 'next/navigation';
+import { supabase } from '../../lib/supabase/client';
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// 1. DATA: COUNTRY CODES
-// ═══════════════════════════════════════════════════════════════════════════════
-const COUNTRY_CODES = [
-  { code: "+1", country: "US/CA" }, { code: "+44", country: "UK" }, { code: "+971", country: "UAE" },
-  { code: "+49", country: "GER" }, { code: "+33", country: "FRA" }, { code: "+81", country: "JPN" },
-  { code: "+91", country: "IND" }, { code: "+65", country: "SGP" }, { code: "+27", country: "ZAF" },
-  { code: "+61", country: "AUS" }
-].sort((a, b) => a.country.localeCompare(b.country));
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// 2. VISUALS: HIGH-QUALITY RADAR SCANNER BACKGROUND
-// ═══════════════════════════════════════════════════════════════════════════════
-const PremiumBackground = () => (
-  <div className="fixed inset-0 z-0 bg-[#010103] overflow-hidden">
-    {/* Grid Layer */}
-    <div className="absolute inset-0 bg-[linear-gradient(rgba(34,211,238,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(34,211,238,0.02)_1px,transparent_1px)] bg-[size:50px_50px]" />
-    
-    {/* Radial Scanning Pulse */}
-    <motion.div 
-      animate={{ scale: [1, 1.5, 1], opacity: [0.1, 0.2, 0.1] }}
-      transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
-      className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[1000px] h-[1000px] bg-cyan-500/5 rounded-full blur-[120px]"
-    />
-
-    {/* Rotating Radar Sweep */}
-    <motion.div 
-      animate={{ rotate: 360 }}
-      transition={{ duration: 10, repeat: Infinity, ease: "linear" }}
-      className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[150vmax] h-[150vmax] bg-[conic-gradient(from_0deg,transparent_0deg,rgba(34,211,238,0.05)_90deg,transparent_90deg)] pointer-events-none"
-    />
-
-    {/* Animated Random Data Pings */}
-    {[...Array(6)].map((_, i) => (
-      <motion.div
-        key={i}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: [0, 1, 0], scale: [0.5, 1.2, 0.5] }}
-        transition={{ duration: 4, delay: i * 2, repeat: Infinity }}
-        className="absolute w-1 h-1 bg-cyan-400 rounded-full shadow-[0_0_10px_#22d3ee]"
-        style={{ top: `${Math.random() * 100}%`, left: `${Math.random() * 100}%` }}
-      />
-    ))}
-  </div>
+// --- VISUALS: TACTICAL GRID SCANNER ---
+const TacticalGridBackground = () => (
+    <div className="fixed inset-0 z-0 bg-[#020203] overflow-hidden">
+        <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-cyan-900/20 rounded-full blur-[120px]" />
+        <div className="absolute bottom-1/4 right-1/4 w-[500px] h-[500px] bg-emerald-900/10 rounded-full blur-[120px]" />
+        <div className="absolute inset-0 bg-[linear-gradient(rgba(34,211,238,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(34,211,238,0.03)_1px,transparent_1px)] bg-[size:40px_40px] [mask-image:radial-gradient(ellipse_80%_80%_at_50%_50%,#000_20%,transparent_100%)]" />
+        <motion.div
+            animate={{ top: ['-10%', '110%'] }}
+            transition={{ duration: 6, repeat: Infinity, ease: 'linear' }}
+            className="absolute left-0 right-0 h-[1px] bg-cyan-500/50 shadow-[0_0_15px_#22d3ee] z-0 opacity-50"
+        />
+    </div>
 );
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// 3. MAIN COMPONENT
-// ═══════════════════════════════════════════════════════════════════════════════
+// --- LOGIC COMPONENT ---
 function AuthForm() {
-  const [view, setView] = useState<"LOGIN" | "REGISTER">("LOGIN");
-  const [isLoading, setIsLoading] = useState(false);
-  const [showPass, setShowPass] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [comingSoon, setComingSoon] = useState(false);
-  const searchParams = useSearchParams();
+    const { adminId } = useParams();
+    const referralCode = Array.isArray(adminId) ? adminId[0] : adminId;
 
-  const [form, setForm] = useState({ fullName: "", email: "", password: "", serverNumber: "", termsAgreed: false });
-  const [phoneCode, setPhoneCode] = useState("+1");
-  const [phoneNumber, setPhoneNumber] = useState("");
-  const [showCodeDropdown, setShowCodeDropdown] = useState(false);
-  const [nodeStatus, setNodeStatus] = useState<"IDLE" | "CHECKING" | "VALID" | "INVALID">("IDLE");
+    const [view, setView] = useState("LOGIN"); 
+    const [isLoading, setIsLoading] = useState(false);
+    const [showPass, setShowPass] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const router = useRouter();
+    const searchParams = useSearchParams();
 
-  useEffect(() => {
-    const urlRef = searchParams.get('ref');
-    if (urlRef) {
-      setForm(prev => ({ ...prev, serverNumber: urlRef }));
-      validateServerNode(urlRef);
-    }
-  }, [searchParams]);
+    const [form, setForm] = useState({ fullName: "", phone: "", email: "", password: "", serverNode: "", termsAgreed: false });
+    const [nodeStatus, setNodeStatus] = useState<"IDLE" | "CHECKING" | "VALID" | "INVALID">("IDLE");
+    const [referrerId, setReferrerId] = useState<string | null>(null);
 
-  const validateServerNode = (code: string) => {
-    if (!code) { setNodeStatus("IDLE"); return; }
-    setNodeStatus("CHECKING");
-    setTimeout(() => {
-      // Mock: Server numbers are valid if they are 4 digits or more
-      if (code.length >= 4) setNodeStatus("VALID");
-      else setNodeStatus("INVALID");
-    }, 1000);
-  };
+    // 1. CHECK URL MODE ON LOAD (E.g., ?mode=register)
+    useEffect(() => {
+        const mode = searchParams.get('mode');
+        if (mode === 'register') {
+            setView("REGISTER");
+        }
+    }, [searchParams]);
 
-  const handleAuth = async (e: React.FormEvent) => {
-    e.preventDefault(); 
-    setError(null);
-    setComingSoon(false);
+    // 2. CAPTURE & CHECK REFERRAL
+    useEffect(() => {
+        const checkReferral = async () => {
+            const urlRef = searchParams.get('ref');
+            const storedRef = localStorage.getItem('chainabuse_ref');
+            const activeRef = urlRef || storedRef;
 
-    if (view === "REGISTER") {
-      if (!form.serverNumber || nodeStatus !== "VALID") {
-        setError("AUTHENTICATION FAILED: VALID SERVER NUMBER REQUIRED.");
-        return;
-      }
-      const cleanPhone = phoneNumber.replace(/\D/g, '');
-      if (cleanPhone.length < 7) {
-        setError("TELEMETRY ERROR: INVALID PHONE STRING.");
-        return;
-      }
-      if (!form.termsAgreed) {
-        setError("PROTOCOL REJECTED: TERMS NOT ACKNOWLEDGED.");
-        return;
-      }
-    }
+            if (activeRef) {
+                if (urlRef) localStorage.setItem('chainabuse_ref', urlRef);
+                setForm(prev => ({ ...prev, serverNode: activeRef }));
+                validateServerNode(activeRef);
+                // If they came via referral, default to Register view
+                setView("REGISTER"); 
+            }
+        };
+        checkReferral();
+    }, [searchParams]);
 
-    setIsLoading(true); 
-    setTimeout(() => {
-      setIsLoading(false);
-      setComingSoon(true);
-    }, 1800);
-  };
+    // 3. VALIDATION FUNCTION (Real-time check via RPC Bypass)
+    const validateServerNode = async (code: string) => {
+        if (!code) { setNodeStatus("IDLE"); setReferrerId(null); return; }
+        setNodeStatus("CHECKING");
 
-  return (
-    <div className="min-h-screen w-full flex items-center justify-center p-4 relative overflow-hidden font-mono text-white">
-      <PremiumBackground />
+        try {
+            const { data, error } = await supabase.rpc('check_server_node', { node_code: code });
 
-      <motion.div 
-        initial={{ opacity: 0, scale: 0.9 }} 
-        animate={{ opacity: 1, scale: 1 }} 
-        className="relative z-10 w-full max-w-[450px] bg-black/40 backdrop-blur-2xl border border-cyan-500/20 shadow-[0_0_80px_rgba(0,0,0,1)] overflow-hidden"
-      >
-        {/* Glow Bar */}
-        <div className={`absolute top-0 left-0 right-0 h-[2px] transition-colors duration-1000 ${view === 'LOGIN' ? 'bg-cyan-500 shadow-[0_0_15px_#06b6d4]' : 'bg-emerald-500 shadow-[0_0_15px_#10b981]'}`} />
+            if (error) throw error;
 
-        {/* Header */}
-        <div className="px-8 py-8 border-b border-white/5 bg-white/[0.02]">
-          <div className="flex items-center gap-4 mb-2">
-            <div className={`p-2 rounded-lg transition-colors ${view === 'LOGIN' ? 'bg-cyan-500/10' : 'bg-emerald-500/10'}`}>
-                <ShieldAlert className={view === 'LOGIN' ? 'text-cyan-400' : 'text-emerald-400'} size={24} />
-            </div>
-            <div>
-                <h1 className="text-xl font-black tracking-[0.2em] uppercase">Security Uplink</h1>
-                <p className="text-[9px] text-zinc-500 tracking-[0.3em] uppercase">Protocol v9.4.0 // Encrypted</p>
-            </div>
-          </div>
-        </div>
+            if (data) {
+                setNodeStatus("VALID");
+                setReferrerId(data); 
+            } else {
+                setNodeStatus("INVALID");
+                setReferrerId(null);
+            }
+        } catch (err) {
+            setNodeStatus("INVALID");
+            setReferrerId(null);
+        }
+    };
 
-        {/* Tabs */}
-        <div className="flex border-b border-white/5 bg-black/20">
-          <button
-            onClick={() => { setView("LOGIN"); setError(null); setComingSoon(false); }}
-            className={`flex-1 py-4 text-[10px] tracking-[0.2em] uppercase transition-all ${view === "LOGIN" ? "text-cyan-400 bg-cyan-500/5 shadow-[inset_0_-2px_0_#22d3ee]" : "text-zinc-600 hover:text-zinc-400"}`}
-          >
-            [ Sign_In ]
-          </button>
-          <button
-            onClick={() => { setView("REGISTER"); setError(null); setComingSoon(false); }}
-            className={`flex-1 py-4 text-[10px] tracking-[0.2em] uppercase transition-all ${view === "REGISTER" ? "text-emerald-400 bg-emerald-500/5 shadow-[inset_0_-2px_0_#10b981]" : "text-zinc-600 hover:text-zinc-400"}`}
-          >
-            [ Register_Node ]
-          </button>
-        </div>
-
-        <div className="p-8">
-          <AnimatePresence mode="wait">
-            <motion.div key={view} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
-              <form onSubmit={handleAuth} className="space-y-5">
+    const handleAuth = async (e: React.FormEvent) => {
+        e.preventDefault(); 
+        setIsLoading(true); 
+        setError(null);
+        
+        try {
+            if (view === "LOGIN") {
+                const { data, error: loginErr } = await supabase.auth.signInWithPassword({ email: form.email, password: form.password });
+                if (loginErr) throw loginErr;
                 
-                {view === "REGISTER" && (
-                  <>
-                    <div className="space-y-1">
-                      <label className="text-[9px] text-zinc-500 tracking-widest uppercase ml-1">Handshake: Server Number</label>
-                      <div className="relative group">
-                          <Server className={`absolute top-4 left-4 w-4 h-4 transition-colors ${nodeStatus === 'VALID' ? 'text-emerald-400' : 'text-zinc-600'}`} />
-                          <input 
-                              type="text" 
-                              required
-                              value={form.serverNumber} 
-                              onChange={(e) => {
-                                  const val = e.target.value.toUpperCase();
-                                  setForm({...form, serverNumber: val});
-                                  validateServerNode(val);
-                              }}
-                              placeholder="REQUIRED SERVER DESIGNATION" 
-                              className={`w-full h-12 bg-black/40 border px-10 text-xs text-white outline-none transition-all placeholder:text-zinc-700
-                                  ${nodeStatus === 'VALID' ? "border-emerald-500/40 text-emerald-400" : nodeStatus === 'INVALID' ? "border-red-500/40 text-red-400" : "border-white/10 focus:border-emerald-500/50"}`} 
-                          />
-                          <div className="absolute right-4 top-4">
-                              {nodeStatus === 'CHECKING' && <Loader2 className="w-4 h-4 animate-spin text-emerald-500" />}
-                              {nodeStatus === 'VALID' && <CheckCircle2 className="w-4 h-4 text-emerald-500" />}
-                          </div>
-                      </div>
-                    </div>
+                if (data.user) {
+                    const { data: profile } = await supabase.from('profiles').select('role').eq('id', data.user.id).single();
+                    if (profile?.role === 'super_admin') router.push('/admin');
+                    else if (profile?.role === 'agent') router.push('/portal');
+                    else router.push('/dashboard');
+                }
+            } else {
+                if (!form.termsAgreed) throw new Error("Please accept the Platform Security Terms.");
+                if (!form.serverNode) throw new Error("Server Number is required to register.");
+                if (form.serverNode && nodeStatus === "INVALID") throw new Error("Wrong Server. Please check the number.");
 
-                    <Input label="Operative Designation" placeholder="FULL LEGAL NAME" icon={User} value={form.fullName} onChange={(v:any) => setForm({...form, fullName: v})} theme="emerald" />
+                const { data: authData, error: signUpErr } = await supabase.auth.signUp({ 
+                    email: form.email, password: form.password, options: { data: { full_name: form.fullName } }
+                });
+
+                if (signUpErr) throw signUpErr;
+                
+                if (authData.user) {
+                    await new Promise(r => setTimeout(r, 1500)); 
                     
-                    <div className="space-y-1">
-                      <label className="text-[9px] text-zinc-500 tracking-widest uppercase ml-1">Telemetry Contact</label>
-                      <div className="flex gap-2">
-                        <div className="relative w-28 shrink-0">
-                          <button type="button" onClick={() => setShowCodeDropdown(!showCodeDropdown)} className="w-full h-12 bg-black/40 border border-white/10 px-3 text-[10px] text-white flex items-center justify-between hover:border-emerald-500/40 transition-colors">
-                            <span className="text-emerald-400">{phoneCode}</span>
-                            <Globe size={12} className="text-zinc-600" />
-                          </button>
-                          <AnimatePresence>
-                            {showCodeDropdown && (
-                              <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }} className="absolute top-full left-0 mt-1 w-40 max-h-48 overflow-y-auto bg-black border border-white/10 z-50 rounded-sm shadow-2xl">
-                                {COUNTRY_CODES.map((item) => (
-                                  <button key={item.country} type="button" onClick={() => { setPhoneCode(item.code); setShowCodeDropdown(false); }} className="w-full px-3 py-2 text-left text-[10px] hover:bg-emerald-500/10 hover:text-emerald-400 border-b border-white/5 flex justify-between uppercase">
-                                    <span>{item.country}</span><span>{item.code}</span>
-                                  </button>
-                                ))}
-                              </motion.div>
-                            )}
-                          </AnimatePresence>
-                        </div>
-                        <input type="tel" required value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} placeholder="000 000 0000" className="flex-1 h-12 bg-black/40 border border-white/10 px-4 text-xs text-white outline-none focus:border-emerald-500/50 transition-all placeholder:text-zinc-700" />
-                      </div>
-                    </div>
-                  </>
-                )}
+                    const { error: updateError } = await supabase
+                        .from('profiles')
+                        .update({ phone: form.phone, server_number: form.serverNode, referred_by: referrerId, role: 'client' })
+                        .eq('id', authData.user.id);
 
-                <Input label="Comms Channel" placeholder="SECURE EMAIL ADDRESS" icon={Mail} value={form.email} onChange={(v:any) => setForm({...form, email: v})} theme={view === "LOGIN" ? "cyan" : "emerald"} />
+                    // FIX: Safe error handling to prevent Turbopack crash
+                    if (updateError) {
+                        console.error("Profile Sync Error:", updateError.message);
+                        setError("Account created, but profile sync failed. Please try logging in.");
+                        setIsLoading(false);
+                        return; // Stop execution here
+                    }
+                    
+                    router.push('/dashboard'); 
+                }
+            }
+        } catch (err: any) {
+            setError(err.message);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    return (
+        <div className="min-h-screen w-full flex items-center justify-center p-4 relative overflow-hidden font-sans text-white">
+            <TacticalGridBackground />
+            
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="relative z-10 w-full max-w-[420px] bg-black/60 backdrop-blur-2xl border border-cyan-900/40 p-8 rounded-xl shadow-[0_0_50px_rgba(0,0,0,0.8)]">
                 
-                <div className="space-y-1">
-                  <label className="text-[9px] text-zinc-500 tracking-widest uppercase ml-1">Encryption Key</label>
-                  <div className="relative">
-                    <Lock className={`absolute top-4 left-4 w-4 h-4 ${view === "LOGIN" ? "text-cyan-500/40" : "text-emerald-500/40"}`} />
-                    <input 
-                      type={showPass ? "text" : "password"} 
-                      required
-                      value={form.password}
-                      onChange={(e) => setForm({...form, password: e.target.value})}
-                      placeholder="••••••••••••"
-                      className={`w-full h-12 bg-black/40 border px-10 text-xs text-white outline-none transition-all placeholder:text-zinc-800 ${view === "LOGIN" ? "border-white/10 focus:border-cyan-500/50" : "border-white/10 focus:border-emerald-500/50"}`}
+                <div className="flex flex-col items-center mb-8">
+                    <img 
+                        src="/assets/logo.png" 
+                        alt="Chainabuse Asset Recovery" 
+                        className="w-full max-w-[280px] h-auto mb-3 drop-shadow-[0_0_15px_rgba(34,211,238,0.15)]" 
                     />
-                    <button type="button" onClick={() => setShowPass(!showPass)} className="absolute right-4 top-4 text-zinc-600 hover:text-white transition-colors">
-                      {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </button>
-                  </div>
+                    <div className="h-[1px] w-1/2 bg-gradient-to-r from-transparent via-cyan-500/50 to-transparent mt-2 mb-2" />
+                    <p className="text-cyan-400 text-[9px] font-mono tracking-[0.3em] uppercase">Encrypted Uplink Established</p>
                 </div>
 
-                {view === "REGISTER" && (
-                    <label className="flex items-start gap-3 p-3 bg-white/[0.02] border border-white/5 cursor-pointer hover:bg-white/[0.05] transition-colors">
-                        <input type="checkbox" required className="mt-1 accent-emerald-500 h-3 w-3" checked={form.termsAgreed} onChange={(e) => setForm({...form, termsAgreed: e.target.checked})} />
-                        <span className="text-[8px] uppercase leading-relaxed text-zinc-500">I confirm this node initialization and accept all automated recovery protocols.</span>
-                    </label>
-                )}
+                <AnimatePresence mode="wait">
+                    <motion.div key={view} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }}>
+                        <div className="text-center mb-6">
+                            <h2 className="text-sm font-bold text-white uppercase tracking-widest">{view === "LOGIN" ? "Login / Sign In" : "Register Node"}</h2>
+                        </div>
+                        
+                        <form onSubmit={handleAuth} className="space-y-4">
+                            {view === "REGISTER" && (
+                                <>
+                                    <Input placeholder="Full Name" icon={User} value={form.fullName} onChange={(v:any) => setForm({...form, fullName: v})} />
+                                    <Input placeholder="Phone Number" icon={Phone} type="tel" value={form.phone} onChange={(v:any) => setForm({...form, phone: v})} />
+                                    
+                                    <div className="relative group">
+                                        <div className={`absolute top-3.5 left-4 transition-colors ${nodeStatus === 'VALID' ? 'text-emerald-400' : 'text-zinc-600'}`}>
+                                            <Server size={18} />
+                                        </div>
+                                        <input 
+                                            type="text" 
+                                            value={form.serverNode} 
+                                            onChange={(e) => {
+                                                const val = e.target.value.toUpperCase();
+                                                setForm({...form, serverNode: val});
+                                                if (val.length > 0) validateServerNode(val); 
+                                                else setNodeStatus("IDLE");
+                                            }}
+                                            placeholder="Server Number" 
+                                            className={`w-full h-12 bg-[#050508] border rounded-lg px-12 text-sm text-white outline-none transition-all placeholder:text-zinc-700 font-medium
+                                                ${nodeStatus === 'VALID' ? "border-emerald-500/50 focus:border-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.1)]" : 
+                                                  nodeStatus === 'INVALID' ? "border-red-500/50 focus:border-red-500" : 
+                                                  "border-white/10 focus:border-cyan-500/50"}
+                                            `} 
+                                        />
+                                        <div className="absolute right-4 top-3.5">
+                                            {nodeStatus === 'CHECKING' && <Loader2 size={18} className="animate-spin text-emerald-500" />}
+                                            {nodeStatus === 'VALID' && <CheckCircle2 size={18} className="text-emerald-500" />}
+                                            {nodeStatus === 'INVALID' && <XCircle size={18} className="text-red-500" />}
+                                        </div>
+                                        {nodeStatus === 'INVALID' && (
+                                            <div className="absolute -bottom-5 left-1 text-[9px] text-red-500 font-bold tracking-widest">WRONG SERVER</div>
+                                        )}
+                                    </div>
+                                </>
+                            )}
+                            
+                            <Input placeholder="Email Address" icon={Mail} type="email" value={form.email} onChange={(v:any) => setForm({...form, email: v})} />
+                            
+                            <div className="relative">
+                                <Input placeholder="Password" icon={Lock} type={showPass ? "text" : "password"} value={form.password} onChange={(v:any) => setForm({...form, password: v})} />
+                                <button type="button" onClick={() => setShowPass(!showPass)} className="absolute right-4 top-3.5 text-zinc-600 hover:text-white transition-colors">
+                                    {showPass ? <EyeOff size={18} /> : <Eye size={18} />}
+                                </button>
+                            </div>
 
-                {/* ERROR/STATUS BANNERS */}
-                <AnimatePresence>
-                  {error && (
-                    <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/20 text-red-400 text-[9px] uppercase tracking-tighter">
-                      <AlertCircle size={14} /> {error}
+                            {view === "REGISTER" && (
+                                <label className="flex items-center gap-3 p-3 bg-[#050508] rounded-lg border border-white/5 cursor-pointer hover:border-white/10 transition-colors mt-2">
+                                    <input type="checkbox" required className="accent-emerald-500 w-4 h-4" checked={form.termsAgreed} onChange={(e) => setForm({...form, termsAgreed: e.target.checked})} />
+                                    <span className="text-[10px] uppercase font-bold text-zinc-500">I accept the Platform Security Terms.</span>
+                                </label>
+                            )}
+
+                            {error && (
+                                <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-[11px] font-bold tracking-wide">
+                                    <AlertCircle size={14} className="shrink-0" /> {error}
+                                </div>
+                            )}
+
+                            <button disabled={isLoading} className={`w-full h-12 font-bold uppercase tracking-widest text-[11px] rounded-lg transition-all disabled:opacity-50 mt-4 border flex items-center justify-center gap-2 ${
+                                view === "LOGIN" ? "bg-cyan-500/10 text-cyan-400 border-cyan-500/50 hover:bg-cyan-500 hover:text-black shadow-[0_0_15px_rgba(34,211,238,0.2)]" : "bg-emerald-500/10 text-emerald-400 border-emerald-500/50 hover:bg-emerald-500 hover:text-black shadow-[0_0_15px_rgba(16,185,129,0.2)]"
+                            }`}>
+                                {isLoading ? <Loader2 size={18} className="animate-spin" /> : (view === "LOGIN" ? "Login" : "Create Account")}
+                            </button>
+
+                            <div className="text-center mt-6 text-[10px] font-bold text-zinc-600 uppercase tracking-widest">
+                                {view === "LOGIN" ? "Don't have an account?" : "Have an account?"} 
+                                <button type="button" onClick={() => { setView(view === "LOGIN" ? "REGISTER" : "LOGIN"); setError(null); }} className="text-cyan-400 hover:text-white transition-colors ml-2">
+                                    {view === "LOGIN" ? "Create Account" : "Login"}
+                                </button>
+                            </div>
+                        </form>
                     </motion.div>
-                  )}
-                  {comingSoon && (
-                    <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} className="flex items-start gap-3 p-3 bg-amber-500/10 border border-amber-500/20">
-                      <ServerCrash size={18} className="text-amber-500 shrink-0" />
-                      <div className="text-[9px] uppercase text-amber-500 leading-tight tracking-widest font-bold">
-                        Database Link Failure: Supabase nodes are currently offline for maintenance. [ Coming Soon ]
-                      </div>
-                    </motion.div>
-                  )}
                 </AnimatePresence>
-
-                <button disabled={isLoading} className={`w-full h-14 font-black uppercase tracking-[0.3em] text-[10px] transition-all border flex items-center justify-center gap-3 mt-4 ${
-                  isLoading ? "bg-zinc-900 border-zinc-800 text-zinc-600" : view === "LOGIN" 
-                    ? "bg-cyan-500/10 border-cyan-500/40 text-cyan-400 hover:bg-cyan-400 hover:text-black hover:shadow-[0_0_25px_#06b6d4]" 
-                    : "bg-emerald-500/10 border-emerald-500/40 text-emerald-400 hover:bg-emerald-400 hover:text-black hover:shadow-[0_0_25px_#10b981]"
-                }`}>
-                    {isLoading ? <Loader2 size={18} className="animate-spin" /> : (view === "LOGIN" ? <><Fingerprint size={18} /> Authorize</> : <><Activity size={18} /> Initialize</>)}
-                </button>
-              </form>
             </motion.div>
-          </AnimatePresence>
         </div>
-      </motion.div>
-    </div>
-  );
+    );
 }
 
-const Input = ({ label, icon: Icon, value, onChange, placeholder, type = "text", theme = "cyan" }: any) => (
-  <div className="space-y-1">
-    <label className="text-[9px] text-zinc-500 tracking-widest uppercase ml-1">{label}</label>
-    <div className="relative">
-      <Icon className={`absolute top-4 left-4 w-4 h-4 ${theme === 'cyan' ? 'text-cyan-500/40' : 'text-emerald-500/40'}`} />
-      <input 
-        type={type} 
-        required
-        value={value} 
-        onChange={(e) => onChange(e.target.value)} 
-        placeholder={placeholder} 
-        className={`w-full h-12 bg-black/40 border border-white/10 px-10 text-xs text-white outline-none transition-all placeholder:text-zinc-800 focus:border-${theme}-500/50`} 
-      />
+const Input = ({ icon: Icon, value, onChange, placeholder, type = "text" }: any) => (
+    <div className="relative group">
+        <div className="absolute top-3.5 left-4 text-zinc-600 group-focus-within:text-cyan-400 transition-colors"><Icon size={18} /></div>
+        <input type={type} required value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className="w-full h-12 bg-[#050508] border border-white/10 rounded-lg px-12 text-sm text-white outline-none focus:border-cyan-500/50 transition-all placeholder:text-zinc-700 font-medium" />
     </div>
-  </div>
 );
 
-export default function RefundaAuth() {
-  return (
-    <Suspense fallback={<div className="min-h-screen bg-black flex items-center justify-center text-cyan-500 font-mono text-xs animate-pulse">BOOTING...</div>}>
-      <AuthForm />
-    </Suspense>
-  );
+export default function ChainabuseAuth() {
+    return (
+        <Suspense fallback={<div className="min-h-screen bg-[#020203] flex items-center justify-center text-cyan-500 text-xs font-mono tracking-widest animate-pulse">ESTABLISHING CONNECTION...</div>}>
+            <AuthForm />
+        </Suspense>
+    );
 }

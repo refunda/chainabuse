@@ -3,12 +3,12 @@ import React, { useState, useEffect, useRef } from "react";
 import { 
     Zap, LogOut, ChevronLeft, ChevronRight, 
     Layers, ChevronDown, TrendingUp, TrendingDown,
-    Menu, X
+    Menu, X, Activity
 } from "lucide-react"; 
 import { THEME, NAV_ITEMS, ASSET_LIST } from "./constants";
 import { motion, AnimatePresence } from "framer-motion";
 import { createClient } from "@supabase/supabase-js"; 
-import { useRouter } from "next/navigation";      
+import { useRouter } from "next/navigation";       
 
 // Initialize Client Locally
 const supabase = createClient(
@@ -16,28 +16,25 @@ const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-// --- NEW CRYPTO TICKER COMPONENT (BATCH SLIDER) ---
+// --- CRYPTO TICKER COMPONENT ---
 const CryptoTicker = () => {
     const [displayData, setDisplayData] = useState<any[]>(ASSET_LIST);
     const latestDataMap = useRef<Map<string, any>>(new Map());
     
-    // Batch Animation State
     const [currentIndex, setCurrentIndex] = useState(0);
     const [itemsPerPage, setItemsPerPage] = useState(5);
 
-    // Responsive items per page
     useEffect(() => {
         const handleResize = () => {
-            if (window.innerWidth < 640) setItemsPerPage(2); // Mobile: 2 coins
-            else if (window.innerWidth < 1024) setItemsPerPage(3); // Tablet: 3 coins
-            else setItemsPerPage(5); // Desktop: 5 coins
+            if (window.innerWidth < 640) setItemsPerPage(2); 
+            else if (window.innerWidth < 1024) setItemsPerPage(3); 
+            else setItemsPerPage(5); 
         };
         handleResize();
         window.addEventListener("resize", handleResize);
         return () => window.removeEventListener("resize", handleResize);
     }, []);
 
-    // WebSocket Logic
     useEffect(() => {
         const ws = new WebSocket("wss://stream.binance.com:9443/ws/!miniTicker@arr");
 
@@ -71,7 +68,6 @@ const CryptoTicker = () => {
         };
     }, []);
 
-    // Cycle through batches every 4 seconds
     const totalPages = Math.ceil(displayData.length / itemsPerPage);
     useEffect(() => {
         const timer = setInterval(() => {
@@ -87,11 +83,10 @@ const CryptoTicker = () => {
         return price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     };
 
-    // Get the current batch of coins to display
     const currentBatch = displayData.slice(currentIndex * itemsPerPage, (currentIndex + 1) * itemsPerPage);
 
     return (
-        <div className="w-full h-[54px] bg-[#0b0e11] border-b relative z-40 overflow-hidden flex items-center px-4" style={{ borderColor: THEME.border }}>
+        <div className="w-full h-[54px] bg-[#0a0f18] border-b border-slate-800 relative z-40 overflow-hidden flex items-center px-2 md:px-4 shadow-md">
             <AnimatePresence mode="wait">
                 <motion.div
                     key={currentIndex}
@@ -99,19 +94,19 @@ const CryptoTicker = () => {
                     animate={{ y: 0, opacity: 1 }}
                     exit={{ y: -20, opacity: 0 }}
                     transition={{ duration: 0.4, ease: "easeInOut" }}
-                    className="flex w-full items-center justify-around md:justify-between"
+                    className="flex w-full items-center justify-around md:justify-between gap-2"
                 >
                     {currentBatch.map((coin, i) => (
-                        <div key={`${coin.s}-${i}`} className="flex items-center gap-2 md:gap-4">
-                            <div className="flex items-center gap-2">
-                                <img src={coin.l} className="w-5 h-5 md:w-6 md:h-6 rounded-full" alt={coin.s} />
-                                <span className="font-[800] text-[#e5e7eb] text-[12px] md:text-[14px]">{coin.s}</span>
+                        <div key={`${coin.s}-${i}`} className="flex items-center gap-1.5 md:gap-4 bg-slate-900/50 px-2 md:px-3 py-1.5 rounded-lg border border-slate-700/50 shrink-0 overflow-hidden min-w-0">
+                            <div className="flex items-center gap-1 md:gap-2 shrink-0">
+                                <img src={coin.l} className="w-4 h-4 md:w-6 md:h-6 rounded-full border border-slate-700 shrink-0" alt={coin.s} />
+                                <span className="font-bold text-slate-200 text-[11px] md:text-[14px] truncate max-w-[40px] md:max-w-none">{coin.s}</span>
                             </div>
-                            <span className="text-white font-mono text-[12px] md:text-[14px] font-[600]">
+                            <span className="text-cyan-400 font-mono text-[11px] md:text-[14px] font-bold truncate drop-shadow-[0_0_5px_rgba(6,182,212,0.3)]">
                                 ${formatPrice(coin.p)}
                             </span>
-                            <span className="text-[10px] md:text-[12px] font-bold flex items-center gap-1" style={{ color: (coin.c || 0) >= 0 ? THEME.success : THEME.danger }}>
-                                {(coin.c || 0) >= 0 ? <TrendingUp size={12}/> : <TrendingDown size={12}/>}
+                            <span className="text-[9px] md:text-[12px] font-mono font-bold flex items-center gap-0.5 md:gap-1 shrink-0" style={{ color: (coin.c || 0) >= 0 ? THEME.success : THEME.danger }}>
+                                {(coin.c || 0) >= 0 ? <TrendingUp size={10} className="md:w-3 md:h-3"/> : <TrendingDown size={10} className="md:w-3 md:h-3"/>}
                                 {Math.abs(coin.c || 0).toFixed(2)}%
                             </span>
                         </div>
@@ -171,8 +166,22 @@ export default function Layout({ children, activeTab, setActiveTab, user }: any)
       }
   };
 
+  const getMenuLabel = (id: string, fallback: string) => {
+      switch(id) {
+          case 'overview': return 'Terminal';
+          case 'assets': return 'Assets';
+          case 'buy_crypto': return 'Buy Crypto';
+          case 'staking': return 'Staking';
+          case 'verification': return 'Verification';
+          case 'security': return 'Security';
+          case 'contact': return 'Contact Support';
+          case 'settings': return 'Settings';
+          default: return fallback;
+      }
+  };
+
   return (
-    <div className="flex h-screen w-screen overflow-hidden font-sans" style={{ background: THEME.bg, color: THEME.text }}>
+    <div className="flex h-screen w-screen overflow-hidden font-sans bg-[#0b1120] text-slate-300 selection:bg-cyan-500/30">
       
       {/* --- MOBILE OVERLAY BACKDROP --- */}
       <AnimatePresence>
@@ -182,7 +191,7 @@ export default function Layout({ children, activeTab, setActiveTab, user }: any)
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                   onClick={() => setIsMobileDrawerOpen(false)}
-                  className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[90] md:hidden"
+                  className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-[90] md:hidden"
               />
           )}
       </AnimatePresence>
@@ -194,70 +203,81 @@ export default function Layout({ children, activeTab, setActiveTab, user }: any)
             x: isMobile ? (isMobileDrawerOpen ? 0 : "-100%") : 0
         }}
         transition={{ type: "spring", stiffness: 300, damping: 30 }}
-        className="fixed md:relative top-0 left-0 h-full z-[100] md:z-50 flex flex-col shrink-0"
-        style={{ background: THEME.sidebarBg, borderRight: THEME.border }}
+        className="fixed md:relative top-0 left-0 h-full z-[100] md:z-50 flex flex-col shrink-0 bg-[#0f172a] border-r border-slate-800 shadow-[20px_0_50px_rgba(0,0,0,0.5)]"
       >
         {/* LOGO */}
-        <div style={{ height: 80, display: "flex", alignItems: "center", padding: "0 20px", position: "relative" }}>
-            <div className="flex items-center gap-[12px] overflow-hidden mt-5">
-                <div style={{ minWidth: 40, height: 40, borderRadius: 12, background: THEME.accent, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: THEME.accentGlow }}>
-                    <Zap size={24} color="white" fill="white" />
-                </div>
-                <motion.span animate={{ opacity: isCollapsed && !isMobile ? 0 : 1, width: isCollapsed && !isMobile ? 0 : "auto" }} style={{ fontSize: 20, fontWeight: 800, color: THEME.accent, letterSpacing: -0.5, whiteSpace: "nowrap" }}>
-                    REFUNDA
-                </motion.span>
+        <div className="h-[80px] flex items-center px-5 relative border-b border-slate-800">
+            <div className="flex items-center gap-3 overflow-hidden mt-2 w-full justify-center">
+                {isCollapsed && !isMobile ? (
+                    // USES YOUR NEW logo-icon.png EXACTLY AS YOU REQUESTED
+                    <img src="/assets/logo-icon.png" alt="Chainabuse Icon" className="h-8 w-auto drop-shadow-[0_0_20px_rgba(6,182,212,0.8)]" />
+                ) : (
+                    // FULL LOGO WITH INTENSE GLOW
+                    <img src="/assets/logo.png" alt="Chainabuse" className="max-w-[160px] drop-shadow-[0_0_25px_rgba(6,182,212,0.8)]" />
+                )}
             </div>
             
             {!isMobile && (
-                <button onClick={() => setIsCollapsed(!isCollapsed)} style={{ position: "absolute", right: -12, top: 28, background: THEME.accent, border: "2px solid #000", borderRadius: "50%", width: 24, height: 24, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "white", zIndex: 60 }}>
+                <button onClick={() => setIsCollapsed(!isCollapsed)} className="absolute -right-3 top-7 bg-slate-900 border border-cyan-800 rounded-full w-6 h-6 flex items-center justify-center cursor-pointer text-cyan-400 hover:text-cyan-300 hover:border-cyan-500 transition-colors z-50 shadow-md">
                     {isCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
                 </button>
             )}
 
             {isMobile && (
-                <button onClick={() => setIsMobileDrawerOpen(false)} className="absolute right-4 top-7 text-gray-400 hover:text-white transition p-2">
+                <button onClick={() => setIsMobileDrawerOpen(false)} className="absolute right-4 top-7 text-slate-500 hover:text-white transition-colors p-2">
                     <X size={20} />
                 </button>
             )}
         </div>
 
         {/* PROFILE SECTION */}
-        <div style={{ padding: "0 15px 20px 15px", borderBottom: "1px solid rgba(255,255,255,0.05)", marginBottom: 10, marginTop: 10 }}>
-            <div style={{ padding: 12, background: "rgba(255,255,255,0.03)", borderRadius: 12, border: "1px solid rgba(255,255,255,0.05)", display: "flex", alignItems: "center", gap: 12, justifyContent: (isCollapsed && !isMobile) ? "center" : "flex-start" }}>
+        <div className="p-[20px_15px] border-b border-slate-800">
+            <div className={`p-3 bg-slate-950/50 rounded-xl border border-slate-800/80 flex items-center gap-3 ${isCollapsed && !isMobile ? "justify-center" : "justify-start"} overflow-hidden shadow-inner`}>
                 
-                <div style={{ minWidth: 36, height: 36, borderRadius: "50%", background: "#333", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: "bold", fontSize: 16, color: "#fff", border: `1px solid ${THEME.accent}`, overflow: "hidden" }}>
-                    {profile?.avatar_url ? (
-                        <img src={profile.avatar_url} alt="Profile" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                    ) : (
-                        <span>{profile?.full_name ? profile.full_name[0] : (profile?.name ? profile.name[0] : "U")}</span>
-                    )}
+                <div className="min-w-[36px] w-[36px] h-[36px] rounded-lg bg-gradient-to-br from-cyan-600 to-emerald-600 p-[1px] shadow-[0_0_15px_rgba(6,182,212,0.3)] shrink-0">
+                    <div className="w-full h-full bg-slate-900 rounded-lg flex items-center justify-center font-bold text-xs text-white uppercase">
+                        {profile?.avatar_url ? (
+                            <img src={profile.avatar_url} alt="Profile" className="w-full h-full object-cover rounded-lg" />
+                        ) : (
+                            <span>{profile?.full_name ? profile.full_name.substring(0,2) : (profile?.name ? profile.name.substring(0,2) : "OP")}</span>
+                        )}
+                    </div>
                 </div>
 
                 {(!isCollapsed || isMobile) && (
-                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ overflow: "hidden" }}>
-                        <div style={{ fontWeight: "bold", fontSize: 13, whiteSpace: "nowrap" }}>{profile?.full_name || profile?.name || "Trader"}</div>
-                        <div style={{ fontSize: 10, fontWeight: "bold", marginTop: 2, color: profile?.kyc_status === "verified" ? THEME.success : THEME.danger }}>{profile?.kyc_status === "verified" ? "VERIFIED" : "UNVERIFIED"}</div>
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex-1 min-w-0">
+                        <div className="font-black text-xs text-white uppercase tracking-wider truncate">{profile?.full_name || profile?.name || "Operative"}</div>
+                        <div className={`text-[9px] font-mono font-bold mt-0.5 tracking-widest truncate ${profile?.kyc_status === "verified" ? "text-emerald-400 drop-shadow-[0_0_3px_rgba(52,211,153,0.5)]" : "text-red-400 drop-shadow-[0_0_3px_rgba(239,68,68,0.5)]"}`}>
+                            {profile?.kyc_status === "verified" ? "VERIFICATION: VERIFIED" : "VERIFICATION: PENDING"}
+                        </div>
                     </motion.div>
                 )}
             </div>
         </div>
 
         {/* NAVIGATION */}
-        <div style={{ flex: 1, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 6, overflowY: "auto" }}>
+        <div className="flex-1 p-3 flex flex-col gap-1 overflow-y-auto custom-scrollbar">
             {NAV_ITEMS.map((item) => {
+                const labelDisplay = getMenuLabel(item.id, item.label);
+
                 if (item.id === "staking") {
                     const isActiveStake = activeTab.includes("stake");
                     return (
-                        <div key="staking-group">
-                            <div onClick={handleStakeClick} style={{ padding: "14px", borderRadius: 12, cursor: "pointer", display: "flex", alignItems: "center", gap: 16, justifyContent: (isCollapsed && !isMobile) ? "center" : "flex-start", background: isActiveStake ? "rgba(139, 92, 246, 0.15)" : "transparent", position: "relative" }}>
-                                <Layers size={20} color={THEME.accent} />
-                                {(!isCollapsed || isMobile) && <><span style={{ fontSize: 14, fontWeight: 500, flex: 1, color: isActiveStake ? "white" : THEME.textDim }}>Stake</span><motion.div animate={{ rotate: isStakeOpen ? 180 : 0 }}><ChevronDown size={14} color="#666" /></motion.div></>}
+                        <div key="staking-group" className="mb-1">
+                            <div onClick={handleStakeClick} className={`p-3.5 rounded-xl cursor-pointer flex items-center gap-4 transition-all group ${isActiveStake ? "bg-cyan-500/10 border border-cyan-500/30 shadow-[inset_0_0_15px_rgba(6,182,212,0.15)]" : "hover:bg-slate-800/50 border border-transparent"}`} style={{ justifyContent: (isCollapsed && !isMobile) ? "center" : "flex-start" }}>
+                                <div className={`${isActiveStake ? "text-cyan-400" : "text-slate-500 group-hover:text-cyan-400"}`}><Layers size={20} /></div>
+                                {(!isCollapsed || isMobile) && (
+                                    <>
+                                        <span className={`text-xs font-bold uppercase tracking-widest flex-1 ${isActiveStake ? "text-cyan-400" : "text-slate-400 group-hover:text-white"}`}>{labelDisplay}</span>
+                                        <motion.div animate={{ rotate: isStakeOpen ? 180 : 0 }}><ChevronDown size={14} className={isActiveStake ? "text-cyan-400" : "text-slate-600"} /></motion.div>
+                                    </>
+                                )}
                             </div>
                             <AnimatePresence>
                                 {(!isCollapsed || isMobile) && isStakeOpen && (
-                                    <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.3, ease: "easeInOut" }} style={{ overflow: "hidden", paddingLeft: 24, position: "relative" }}>
-                                        <motion.div initial={{ height: 0 }} animate={{ height: "100%" }} style={{ position: "absolute", left: 24, top: 0, width: 1.5, background: "rgba(255,255,255,0.1)", borderRadius: 1 }} />
-                                        <div style={{ display: "flex", flexDirection: "column", marginTop: 4 }}>
+                                    <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.3, ease: "easeInOut" }} className="overflow-hidden pl-6 relative">
+                                        <motion.div initial={{ height: 0 }} animate={{ height: "100%" }} className="absolute left-6 top-0 w-[1.5px] bg-slate-700 rounded-sm" />
+                                        <div className="flex flex-col mt-1">
                                             <SubNavItem label="Stake Plans" isActive={activeTab === "stake_plans"} onClick={() => handleNavClick("stake_plans")} />
                                             <SubNavItem label="Manage Stakes" isActive={activeTab === "manage_stakes"} onClick={() => handleNavClick("manage_stakes")} isLast />
                                         </div>
@@ -267,19 +287,25 @@ export default function Layout({ children, activeTab, setActiveTab, user }: any)
                         </div>
                     );
                 }
+                
+                const isActive = activeTab === item.id;
+                
                 return (
-                    <div key={item.id} onClick={() => handleNavClick(item.id)} style={{ padding: "14px", borderRadius: 12, cursor: "pointer", display: "flex", alignItems: "center", gap: 16, justifyContent: (isCollapsed && !isMobile) ? "center" : "flex-start", background: activeTab === item.id ? "rgba(139, 92, 246, 0.15)" : "transparent", color: activeTab === item.id ? "white" : THEME.textDim }}>
-                        <div style={{ color: THEME.accent }}>{item.icon}</div>
-                        {(!isCollapsed || isMobile) && <span style={{ fontSize: 14, fontWeight: 500 }}>{item.label}</span>}
+                    <div key={item.id} onClick={() => handleNavClick(item.id)} className={`p-3.5 rounded-xl cursor-pointer flex items-center gap-4 transition-all group ${isActive ? "bg-cyan-500/10 border border-cyan-500/30 shadow-[inset_0_0_15px_rgba(34,211,238,0.15)]" : "hover:bg-slate-800/50 border border-transparent"}`} style={{ justifyContent: (isCollapsed && !isMobile) ? "center" : "flex-start" }}>
+                        <div className={`${isActive ? "text-cyan-400 drop-shadow-[0_0_5px_rgba(6,182,212,0.5)]" : "text-slate-500 group-hover:text-cyan-400 transition-colors"}`}>{item.icon}</div>
+                        {(!isCollapsed || isMobile) && (
+                            <span className={`text-xs font-bold uppercase tracking-widest ${isActive ? "text-cyan-400 drop-shadow-[0_0_2px_rgba(6,182,212,0.5)]" : "text-slate-400 group-hover:text-white transition-colors"}`}>{labelDisplay}</span>
+                        )}
                     </div>
                 );
             })}
         </div>
 
         {/* LOGOUT */}
-        <div style={{ padding: 20 }}>
-            <button onClick={handleLogout} style={{ width: "100%", padding: 12, background: "rgba(239,68,68,0.1)", border: "none", borderRadius: 8, color: THEME.danger, fontSize: 13, fontWeight: "bold", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-                <LogOut size={16} /> {(!isCollapsed || isMobile) && "Log Out"}
+        <div className="p-5 border-t border-slate-800">
+            <button onClick={handleLogout} className="w-full p-3 bg-red-500/5 hover:bg-red-500/15 border border-transparent hover:border-red-500/30 rounded-xl text-red-400/80 hover:text-red-400 text-xs font-bold uppercase tracking-widest cursor-pointer flex items-center justify-center gap-3 transition-colors group">
+                <LogOut size={16} className="group-hover:drop-shadow-[0_0_5px_rgba(239,68,68,0.8)]" /> 
+                {(!isCollapsed || isMobile) && <span className="group-hover:drop-shadow-[0_0_5px_rgba(239,68,68,0.8)]">Disconnect</span>}
             </button>
         </div>
       </motion.aside>
@@ -288,22 +314,17 @@ export default function Layout({ children, activeTab, setActiveTab, user }: any)
       <main className="flex-1 flex flex-col h-full w-full overflow-hidden relative">
         
         {/* MOBILE TOP NAVBAR */}
-        <div className="md:hidden flex items-center justify-between px-4 py-3 bg-[#0b0e11] border-b relative z-40" style={{ borderColor: THEME.border }}>
-            <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center shadow-lg shadow-purple-900/30" style={{ background: THEME.accent }}>
-                    <Zap size={16} color="white" fill="white" />
-                </div>
-                <span className="text-lg font-bold tracking-tight" style={{ color: THEME.accent }}>REFUNDA</span>
-            </div>
-            <button onClick={() => setIsMobileDrawerOpen(true)} className="p-2 rounded-lg bg-white/5 border border-white/10 text-white hover:bg-white/10 transition">
+        <div className="md:hidden flex items-center justify-between px-5 py-4 bg-[#0f172a] border-b border-slate-800 relative z-40 shadow-md">
+            <img src="/assets/logo.png" alt="Chainabuse" className="h-7 drop-shadow-[0_0_15px_rgba(6,182,212,0.6)]" />
+            <button onClick={() => setIsMobileDrawerOpen(true)} className="p-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 hover:text-white hover:bg-slate-700 transition-colors shadow-sm">
                 <Menu size={20} />
             </button>
         </div>
 
-        {/* THE BATCH SLIDER TICKER LIVES HERE */}
+        {/* TICKER */}
         <CryptoTicker />
         
-        <div className="flex-1 overflow-y-auto p-4 md:p-10 w-full relative">
+        <div className="flex-1 overflow-y-auto p-4 md:p-8 w-full relative">
             {children}
         </div>
       </main>
@@ -313,8 +334,8 @@ export default function Layout({ children, activeTab, setActiveTab, user }: any)
 }
 
 const SubNavItem = ({ label, isActive, onClick, isLast }: any) => (
-    <motion.div initial={{ x: -10, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ duration: 0.2 }} onClick={onClick} style={{ padding: "10px 16px", cursor: "pointer", fontSize: 13, color: isActive ? "white" : "#666", position: "relative", display: "flex", alignItems: "center" }}>
-        <div style={{ position: "absolute", left: 0, top: "50%", width: 12, height: 1.5, background: "rgba(255,255,255,0.1)", borderBottomLeftRadius: isLast ? 4 : 0 }} />
-        <span style={{ marginLeft: 12, fontWeight: isActive ? "600" : "400", color: isActive ? THEME.accent : "inherit" }}>{label}</span>
+    <motion.div initial={{ x: -10, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ duration: 0.2 }} onClick={onClick} className="py-2.5 px-4 cursor-pointer relative flex items-center group">
+        <div className={`absolute left-0 top-1/2 w-3 h-[1.5px] bg-slate-700 ${isLast ? 'rounded-bl-sm' : ''}`} />
+        <span className={`ml-3 text-[11px] font-bold uppercase tracking-widest transition-colors ${isActive ? "text-cyan-400" : "text-slate-500 group-hover:text-slate-300"}`}>{label}</span>
     </motion.div>
 );

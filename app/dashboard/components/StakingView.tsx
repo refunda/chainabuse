@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect, useRef } from "react";
-import { THEME, ASSET_LIST } from "./constants"; 
-import { PiggyBank, TrendingUp, Info, ArrowRight, Wallet, AlertTriangle, X, Flame, Timer, TrendingDown, RefreshCw } from "lucide-react";
+import { ASSET_LIST } from "./constants"; 
+import { PiggyBank, TrendingUp, Info, ArrowRight, Wallet, AlertTriangle, X, Flame, Timer, TrendingDown, RefreshCw, Server, Shield, Layers } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { createClient } from "@supabase/supabase-js"; 
 
@@ -145,9 +145,9 @@ export default function StakingView({ activeSubTab, onRedirect, onUpdateAssets }
                 fetchData(); 
                 if(onUpdateAssets) onUpdateAssets(); 
                 onRedirect("manage_stakes");
-                alert("Stake Successful! Your funds are now locked and earning yields.");
+                alert("Vault Locked Successfully! Your assets are now generating yields.");
             } else {
-                alert("Staking failed: " + error.message);
+                alert("Execution failed: " + error.message);
             }
         }
     };
@@ -166,36 +166,46 @@ export default function StakingView({ activeSubTab, onRedirect, onUpdateAssets }
                 setPenaltyModal(null);
                 fetchData(); 
                 if(onUpdateAssets) onUpdateAssets(); 
-                alert("Stake broken successfully. Assets returned to your Trading Wallet minus the 15% penalty fee.");
+                alert("Vault breached successfully. Remaining assets returned to Terminal minus the 15% breach penalty.");
             } else {
-                alert("Error breaking stake: " + error.message);
+                alert("Error breaching vault: " + error.message);
             }
         }
     };
 
     return (
-        <div className="max-w-[1200px] mx-auto w-full">
-            {/* HEADER */}
-            <div className="p-6 md:p-[30px] mb-6 md:mb-[40px] rounded-2xl md:rounded-[24px]" style={{ background: "linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(0,0,0,0) 100%)", border: `1px solid ${THEME.border}` }}>
-                <div className="flex flex-col md:flex-row items-start md:items-center gap-[15px] md:gap-[20px]">
-                    <div className="w-[50px] h-[50px] md:w-[60px] md:h-[60px] rounded-full flex items-center justify-center shrink-0" style={{ background: THEME.accent, boxShadow: THEME.accentGlow }}>
-                        <PiggyBank className="w-6 h-6 md:w-[30px] md:h-[30px]" color="white" />
+        <div className="max-w-[1200px] mx-auto w-full font-sans text-slate-300">
+            
+            {/* HEADER (TACTICAL) */}
+            <div className="p-6 md:p-10 mb-8 rounded-2xl md:rounded-[24px] bg-[#050508] border border-cyan-900/30 shadow-[0_0_30px_rgba(6,182,212,0.05)] relative overflow-hidden group">
+                <div className="absolute inset-0 bg-[linear-gradient(rgba(6,182,212,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(6,182,212,0.05)_1px,transparent_1px)] bg-[size:30px_30px] opacity-20 pointer-events-none group-hover:opacity-40 transition-opacity duration-1000" />
+                <div className="absolute -right-20 -top-20 w-64 h-64 bg-cyan-500/10 rounded-full blur-3xl mix-blend-screen pointer-events-none" />
+
+                <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center gap-6">
+                    <div className="w-16 h-16 md:w-20 md:h-20 rounded-2xl flex items-center justify-center shrink-0 bg-cyan-500/10 border border-cyan-500/30 shadow-[0_0_20px_rgba(6,182,212,0.2)]">
+                        <Layers className="w-8 h-8 md:w-10 md:h-10 text-cyan-400" />
                     </div>
                     <div>
-                        <h1 className="text-[22px] md:text-[28px] font-bold mb-[5px]">{isManageView ? "Manage Stakes" : "Staking Hub"}</h1>
-                        <p className="text-[13px] md:text-sm" style={{ color: THEME.textDim }}>{isManageView ? "Track your real-time earnings and lock periods." : "Earn industry-leading APY on your active trading assets."}</p>
+                        <h1 className="text-2xl md:text-3xl font-black text-white uppercase tracking-widest font-mono mb-2">
+                            {isManageView ? "Active Vaults" : "High-Yield Node Setup"}
+                        </h1>
+                        <p className="text-xs md:text-sm text-slate-500 font-mono uppercase tracking-widest leading-relaxed">
+                            {isManageView 
+                            ? "Monitor real-time cryptographic yields and vault lock periods." 
+                            : "Lock volatile assets into high-yield generating liquidity nodes."}
+                        </p>
                     </div>
                 </div>
             </div>
 
             {/* VIEWS */}
             {isManageView ? (
-                <div className="grid gap-[20px]">
+                <div className="grid gap-5">
                     {activeStakes.length === 0 ? (
-                        <div className="text-center p-[40px] md:p-[60px] rounded-2xl md:rounded-[24px]" style={{ background: THEME.cardBg, border: THEME.border }}>
-                            <Wallet className="w-10 h-10 md:w-[50px] md:h-[50px] mx-auto mb-[20px] opacity-50" color={THEME.textDim} />
-                            <h3 className="text-lg md:text-xl mb-[10px] font-bold">No Active Stakes</h3>
-                            <button onClick={() => onRedirect("stake_plans")} className="px-[24px] py-[12px] border-none rounded-xl md:rounded-[12px] text-white font-bold cursor-pointer transition text-sm md:text-base" style={{ background: THEME.accentGradient }}>View Plans</button>
+                        <div className="text-center p-12 md:p-20 rounded-2xl md:rounded-[24px] bg-[#050508] border border-white/5 shadow-md">
+                            <Server className="w-12 h-12 md:w-16 md:h-16 mx-auto mb-6 text-slate-700" />
+                            <h3 className="text-lg md:text-xl font-black text-white uppercase tracking-widest font-mono mb-6">No Active Vaults</h3>
+                            <button onClick={() => onRedirect("stake_plans")} className="px-8 py-4 border border-cyan-500/50 rounded-xl text-slate-900 bg-cyan-500 hover:bg-cyan-400 font-black uppercase tracking-widest text-xs cursor-pointer transition-all shadow-[0_0_15px_rgba(6,182,212,0.3)]">Deploy New Node</button>
                         </div>
                     ) : (
                         activeStakes.map((stake: any) => (
@@ -209,7 +219,7 @@ export default function StakingView({ activeSubTab, onRedirect, onUpdateAssets }
                     )}
                 </div>
             ) : (
-                <div className="grid gap-[20px] md:gap-[25px] grid-cols-1 md:grid-cols-[repeat(auto-fill,minmax(320px,1fr))]">
+                <div className="grid gap-5 md:gap-6 grid-cols-1 md:grid-cols-[repeat(auto-fill,minmax(340px,1fr))]">
                     {ASSET_LIST.map((asset: any) => {
                         const userAsset = tradingAssets.find((a: any) => a.symbol === asset.s);
                         const balance = userAsset ? userAsset.balance : 0;
@@ -237,72 +247,97 @@ export default function StakingView({ activeSubTab, onRedirect, onUpdateAssets }
             <AnimatePresence>
                 {/* STAKE SETUP */}
                 {stakeModal && (
-                    <div className="fixed inset-0 bg-black/90 z-[200] flex items-end md:items-center justify-center backdrop-blur-md p-0 md:p-5">
-                        <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="w-full md:w-[95%] max-w-[450px] p-5 md:p-[30px] rounded-t-3xl md:rounded-[24px] bg-[#0f0f12] overflow-y-auto max-h-[90vh]" style={{ border: `1px solid ${THEME.accent}`, boxShadow: THEME.accentGlow }}>
-                            <div className="flex justify-between items-center mb-[20px] md:mb-[25px]">
-                                <h2 className="text-[20px] md:text-[22px] font-bold">Stake {stakeModal.symbol}</h2>
-                                <button onClick={() => setStakeModal(null)} className="bg-transparent border-none text-[#666] cursor-pointer"><X size={24} /></button>
+                    <div className="fixed inset-0 bg-slate-950/80 z-[200] flex items-end md:items-center justify-center backdrop-blur-sm p-0 md:p-5">
+                        <motion.div initial={{ y: 50, opacity: 0, scale: 0.95 }} animate={{ y: 0, opacity: 1, scale: 1 }} exit={{ y: 50, opacity: 0, scale: 0.95 }} transition={{ type: "spring", damping: 25, stiffness: 300 }} className="w-full md:w-[95%] max-w-[450px] rounded-t-3xl md:rounded-[24px] bg-[#0a0f18]/95 backdrop-blur-xl border border-cyan-500/30 shadow-[0_30px_60px_rgba(0,0,0,0.8),inset_0_1px_0_rgba(255,255,255,0.1)] overflow-hidden flex flex-col max-h-[90vh]">
+                            
+                            {/* Modal Header */}
+                            <div className="p-5 md:p-6 border-b border-slate-700/50 flex justify-between items-center bg-slate-900/50 shrink-0">
+                                <h2 className="text-sm font-bold font-mono text-slate-100 uppercase tracking-widest flex items-center gap-2">
+                                    <Server size={16} className="text-cyan-400" /> Configure {stakeModal.symbol} Node
+                                </h2>
+                                <button onClick={() => setStakeModal(null)} className="p-2 text-slate-500 hover:text-slate-200 hover:bg-slate-800 rounded-xl transition-colors"><X size={18} /></button>
                             </div>
                             
-                            <div className="mb-[20px] md:mb-[25px]">
-                                <div className="flex justify-between mb-[10px] text-[11px] md:text-[12px] text-[#888]">
-                                    <span>Lock Duration</span>
-                                    <span>APY: <span className="font-bold" style={{ color: THEME.success }}>{stakeModal.plans[duration].rate}%</span></span>
-                                </div>
-                                <div className="flex gap-[8px] md:gap-[10px]">
-                                    {[7, 14, 30].map((d: any) => (
-                                        <button key={d} onClick={() => setDuration(d)} className="flex-1 py-[10px] md:py-[12px] border-none rounded-[8px] md:rounded-[10px] text-white font-bold cursor-pointer transition text-[12px] md:text-sm" style={{ background: duration === d ? THEME.accent : "#222" }}>{d} Days</button>
-                                    ))}
-                                </div>
-                            </div>
-
-                            <div className="mb-[20px] md:mb-[25px]">
-                                <div className="flex justify-between mb-[10px] text-[11px] md:text-[12px]">
-                                    <span className="text-[#888]">Amount to Stake</span>
-                                    <span className="text-[#888]">Trading Wallet: {tradingAssets.find((a: any) => a.symbol === stakeModal.symbol)?.balance.toFixed(6) || 0}</span>
-                                </div>
-                                <div className="relative">
-                                    <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder={`Min: ${stakeModal.plans[duration].min}`} className="w-full p-[14px_65px_14px_14px] md:p-[15px_80px_15px_15px] bg-[#1a1a1a] rounded-xl md:rounded-[12px] text-white text-[16px] md:text-[18px] outline-none" style={{ border: THEME.border }} />
-                                    <div className="absolute right-[8px] md:right-[10px] top-[10px] flex items-center gap-[8px]">
-                                        <button onClick={handleMaxAmount} className="p-[4px_8px] md:p-[5px_10px] border-none rounded-[6px] font-bold cursor-pointer text-[10px] md:text-[11px]" style={{ background: "rgba(255,255,255,0.1)", color: THEME.accent }}>MAX</button>
+                            <div className="p-6 md:p-8 overflow-y-auto custom-scrollbar">
+                                <div className="mb-6">
+                                    <div className="flex justify-between mb-3 text-[10px] md:text-xs font-mono uppercase tracking-widest text-slate-500">
+                                        <span>Lock Duration</span>
+                                        <span className="flex items-center gap-1">APY Yield: <span className="font-bold text-emerald-400 drop-shadow-[0_0_5px_rgba(52,211,153,0.5)]">{stakeModal.plans[duration].rate}%</span></span>
+                                    </div>
+                                    <div className="flex gap-3">
+                                        {[7, 14, 30].map((d: any) => (
+                                            <button key={d} onClick={() => setDuration(d)} className={`flex-1 py-3 border rounded-xl font-bold font-mono text-[10px] md:text-xs uppercase tracking-widest transition-all ${duration === d ? "bg-cyan-500/10 border-cyan-500/50 text-cyan-400 shadow-[inset_0_0_15px_rgba(6,182,212,0.15)]" : "bg-slate-950 border-slate-800 text-slate-500 hover:text-slate-300 hover:border-slate-700"}`}>
+                                                {d} Days
+                                            </button>
+                                        ))}
                                     </div>
                                 </div>
+
+                                <div className="mb-8 relative bg-slate-950 p-5 rounded-2xl border border-slate-700/50 focus-within:border-cyan-500/50 focus-within:shadow-[0_0_20px_rgba(6,182,212,0.1)] transition-all shadow-inner group">
+                                    <div className="flex justify-between mb-2 text-[10px] font-mono text-slate-500 uppercase tracking-widest">
+                                        <span>Deposit Volume</span>
+                                        <span className="text-right">Avail: <span className="text-slate-300 font-bold">{tradingAssets.find((a: any) => a.symbol === stakeModal.symbol)?.balance.toFixed(6) || 0}</span></span>
+                                    </div>
+                                    <div className="relative">
+                                        <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder={`Min: ${stakeModal.plans[duration].min}`} className="w-full bg-transparent border-none text-white font-mono text-3xl font-black outline-none transition-colors placeholder:text-slate-800" />
+                                        <button onClick={handleMaxAmount} className="absolute right-0 top-1 bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-lg text-[10px] font-bold font-mono text-cyan-400 uppercase transition-colors border border-slate-700 shadow-sm">Max</button>
+                                    </div>
+                                </div>
+
+                                <div className="p-4 rounded-xl flex gap-3 mb-6 bg-orange-500/10 border border-orange-500/30 shadow-[inset_0_0_20px_rgba(249,115,22,0.05)]">
+                                    <AlertTriangle className="w-5 h-5 shrink-0 text-orange-400 mt-0.5" />
+                                    <div className="text-[10px] md:text-xs font-mono text-orange-200/90 leading-relaxed">
+                                        <strong className="text-white block mb-1">MARKET VOLATILITY WARNING:</strong> Yields calculate natively in {stakeModal.symbol}. Breaching the vault before term completion triggers a mandatory <b>15% penalty fee</b> on principal.
+                                    </div>
+                                </div>
+
+                                <label className="flex items-start md:items-center gap-3 mb-8 text-[11px] md:text-xs font-mono uppercase tracking-widest text-slate-400 cursor-pointer p-2 hover:bg-slate-800/30 rounded-xl transition-colors">
+                                    <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} className="w-4 h-4 shrink-0 mt-0.5 md:mt-0 accent-cyan-500 cursor-pointer" />
+                                    I authorize locking these assets for {duration} days.
+                                </label>
+
+                                <button onClick={handleConfirmStake} className={`w-full py-4 md:py-5 border-none rounded-xl font-black uppercase tracking-widest text-xs md:text-sm flex items-center justify-center transition-all ${agreed ? "bg-gradient-to-r from-cyan-500 to-cyan-400 hover:from-cyan-400 hover:to-cyan-300 text-slate-900 shadow-[0_10px_20px_rgba(6,182,212,0.2)] active:scale-95 cursor-pointer" : "bg-slate-800 text-slate-500 cursor-not-allowed"}`}>
+                                    Deploy Node Contract
+                                </button>
                             </div>
-
-                            <div className="p-[12px] md:p-[15px] rounded-xl md:rounded-[12px] flex gap-[10px] mb-[20px] md:mb-[25px] text-[11px] md:text-[12px]" style={{ background: "rgba(245, 158, 11, 0.1)", color: THEME.warning, border: "1px solid rgba(245, 158, 11, 0.2)" }}>
-                                <AlertTriangle className="w-5 h-5 md:w-6 md:h-6 shrink-0" />
-                                <div><b>Market Volatility Warning:</b> Your staking returns are calculated in {stakeModal.symbol}. Early withdrawal incurs a 15% fee.</div>
-                            </div>
-
-                            <label className="flex items-center gap-[10px] mb-[20px] md:mb-[25px] text-[12px] md:text-[13px] text-[#ccc] cursor-pointer px-1">
-                                <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} className="w-[14px] h-[14px] md:w-[16px] md:h-[16px]" style={{ accentColor: THEME.accent }} />
-                                I agree to lock my assets for {duration} days.
-                            </label>
-
-                            <button onClick={handleConfirmStake} className="w-full py-[14px] md:py-[16px] border-none rounded-xl md:rounded-[12px] text-white font-bold cursor-pointer text-[14px] md:text-[16px] transition" style={{ background: THEME.accentGradient, opacity: agreed ? 1 : 0.5, pointerEvents: agreed ? "auto" : "none" }}>Confirm Stake</button>
                         </motion.div>
                     </div>
                 )}
 
-                {/* PENALTY WARNING */}
+                {/* PENALTY WARNING (RED TACTICAL) */}
                 {penaltyModal && (
-                    <div className="fixed inset-0 bg-black/95 z-[300] flex items-end md:items-center justify-center backdrop-blur-md p-0 md:p-5">
-                        <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0 }} className="w-full md:w-[95%] max-w-[450px] p-5 md:p-[30px] rounded-t-3xl md:rounded-[24px] bg-[#1a0505] text-center overflow-y-auto max-h-[90vh]" style={{ border: "1px solid #ef4444", boxShadow: "0 0 50px rgba(239, 68, 68, 0.2)" }}>
-                            <div className="w-[60px] h-[60px] md:w-[80px] md:h-[80px] rounded-full flex items-center justify-center mx-auto mb-[15px] md:mb-[20px]" style={{ background: "rgba(239, 68, 68, 0.1)" }}>
-                                <Flame className="w-8 h-8 md:w-10 md:h-10" color="#ef4444" />
+                    <div className="fixed inset-0 bg-slate-950/90 z-[300] flex items-end md:items-center justify-center backdrop-blur-md p-0 md:p-5">
+                        <motion.div initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, opacity: 0 }} className="w-full md:w-[95%] max-w-[450px] p-6 md:p-8 rounded-t-3xl md:rounded-[24px] bg-[#0a0505] border border-red-900/50 shadow-[0_30px_60px_rgba(0,0,0,0.9),inset_0_0_40px_rgba(239,68,68,0.1)] text-center flex flex-col max-h-[90vh] overflow-y-auto custom-scrollbar">
+                            <div className="w-16 h-16 md:w-20 md:h-20 rounded-2xl flex items-center justify-center mx-auto mb-6 bg-red-500/10 border border-red-500/30 shadow-[0_0_30px_rgba(239,68,68,0.3)]">
+                                <Flame className="w-8 h-8 md:w-10 md:h-10 text-red-500" />
                             </div>
-                            <h2 className="text-[22px] md:text-[26px] font-bold text-[#ef4444] mb-[10px]">Wait! Are you sure?</h2>
-                            <p className="text-[#aaa] text-[13px] md:text-[14px] leading-relaxed mb-[20px] md:mb-[25px]">
-                                Unstaking <b>{penaltyModal.amount} {penaltyModal.symbol}</b> before the lock period ends will trigger an instant <b>15% Penalty Fee</b>.
+                            <h2 className="text-xl md:text-2xl font-black text-white uppercase tracking-widest font-mono mb-3">Confirm Vault Breach</h2>
+                            <p className="text-slate-400 font-mono text-[10px] md:text-xs leading-relaxed uppercase tracking-widest mb-6 px-4">
+                                Breaching this contract early triggers an instant protocol penalty.
                             </p>
-                            <div className="rounded-xl md:rounded-[16px] p-[15px] md:p-[20px] mb-[20px] md:mb-[25px]" style={{ background: "rgba(255,255,255,0.05)" }}>
-                                <div className="flex justify-between mb-[10px] text-[12px] md:text-sm"><span className="text-[#888]">Principal</span><span className="font-bold">{penaltyModal.amount} {penaltyModal.symbol}</span></div>
-                                <div className="flex justify-between mb-[10px] text-[12px] md:text-sm text-[#ef4444]"><span>Penalty Fee (15%)</span><span className="font-bold">-{(penaltyModal.amount * 0.15).toFixed(6)} {penaltyModal.symbol}</span></div>
-                                <div className="border-t border-white/10 pt-[10px] flex justify-between text-[12px] md:text-sm"><span>You Receive</span><span className="font-bold text-white">{(penaltyModal.amount * 0.85).toFixed(6)} {penaltyModal.symbol}</span></div>
+                            
+                            <div className="rounded-xl p-5 mb-8 bg-black/40 border border-red-900/30 shadow-inner">
+                                <div className="flex justify-between items-center mb-3 pb-3 border-b border-red-900/20">
+                                    <span className="text-[10px] font-mono uppercase text-slate-500">Locked Principal</span>
+                                    <span className="font-bold font-mono text-white text-xs">{penaltyModal.amount} {penaltyModal.symbol}</span>
+                                </div>
+                                <div className="flex justify-between items-center mb-3 pb-3 border-b border-red-900/20">
+                                    <span className="text-[10px] font-mono uppercase text-red-500">Breach Penalty (15%)</span>
+                                    <span className="font-bold font-mono text-red-500 text-xs drop-shadow-[0_0_5px_rgba(239,68,68,0.5)]">
+                                        -{(penaltyModal.amount * 0.15).toFixed(6)} {penaltyModal.symbol}
+                                    </span>
+                                </div>
+                                <div className="flex justify-between items-center pt-1">
+                                    <span className="text-[11px] font-mono uppercase font-black text-emerald-400">Net Return</span>
+                                    <span className="font-black font-mono text-emerald-400 text-sm drop-shadow-[0_0_5px_rgba(52,211,153,0.5)]">
+                                        {(penaltyModal.amount * 0.85).toFixed(6)} {penaltyModal.symbol}
+                                    </span>
+                                </div>
                             </div>
-                            <div className="flex flex-col md:flex-row gap-[10px] md:gap-[15px]">
-                                <button onClick={() => setPenaltyModal(null)} className="flex-1 p-[14px] md:p-[15px] bg-white text-black border-none rounded-xl md:rounded-[12px] font-bold cursor-pointer text-sm">Keep Staking</button>
-                                <button onClick={executeBreakStake} className="flex-1 p-[14px] md:p-[15px] border rounded-xl md:rounded-[12px] font-bold cursor-pointer text-sm" style={{ background: "rgba(239, 68, 68, 0.15)", color: "#ef4444", borderColor: "#ef4444" }}>Unstake & Pay Penalty</button>
+                            
+                            <div className="flex flex-col md:flex-row gap-3 md:gap-4">
+                                <button onClick={() => setPenaltyModal(null)} className="flex-1 py-4 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-white rounded-xl font-bold font-mono text-[10px] md:text-xs uppercase tracking-widest transition-colors shadow-sm">Abort Breach</button>
+                                <button onClick={executeBreakStake} className="flex-1 py-4 bg-red-600 hover:bg-red-500 text-white border-none rounded-xl font-black font-mono text-[10px] md:text-xs uppercase tracking-widest transition-colors shadow-[0_0_20px_rgba(239,68,68,0.3)]">Confirm Penalty</button>
                             </div>
                         </motion.div>
                     </div>
@@ -339,7 +374,7 @@ const ActiveStakeItem = ({ stake, livePrice, onBreak }: any) => {
                 const hours = Math.floor((remainingMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
                 setTimeRemaining(`${days}d ${hours}h left`);
             } else if (stake.status === 'broken') {
-                setTimeRemaining("BROKEN (PENALTY)");
+                setTimeRemaining("BREACHED (PENALTY)");
             } else {
                 setTimeRemaining("COMPLETED");
             }
@@ -357,60 +392,61 @@ const ActiveStakeItem = ({ stake, livePrice, onBreak }: any) => {
     const totalEquity = currentUsdVal + earnedUsd;
 
     return (
-        <div className="p-5 md:p-[25px] rounded-2xl md:rounded-[20px]" style={{ background: "#11141D", border: "1px solid rgba(255,255,255,0.05)", boxShadow: "0 10px 30px rgba(0,0,0,0.2)", opacity: stake.status === 'active' ? 1 : 0.6 }}>
-            <div className="flex justify-between items-start md:items-center mb-[15px] md:mb-[20px]">
-                <div className="flex items-center gap-[12px] md:gap-[15px]">
-                    <img src={stake.icon} className="w-10 h-10 md:w-[45px] md:h-[45px] rounded-full" />
+        <div className={`p-6 md:p-8 rounded-2xl md:rounded-[24px] bg-[#0a0f18]/80 backdrop-blur-sm border shadow-xl transition-all ${stake.status === 'active' ? 'border-slate-800' : 'border-red-900/30 opacity-70 grayscale-[50%]'}`}>
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 md:gap-0">
+                <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 md:w-14 md:h-14 rounded-full bg-slate-950 border border-slate-700 flex items-center justify-center p-1 shadow-inner">
+                        <img src={stake.icon} className="w-full h-full rounded-full" />
+                    </div>
                     <div>
-                        <div className="font-bold text-[15px] md:text-[18px] text-white leading-tight">{stake.symbol} Staking</div>
-                        <div className="text-[10px] md:text-[12px] font-bold flex items-center gap-[4px] md:gap-[5px] mt-1" style={{ color: stake.status === 'broken' ? THEME.danger : THEME.accent }}>
-                            <Timer size={12} className="w-3 h-3 md:w-3 md:h-3" /> {timeRemaining}
+                        <div className="font-black text-lg md:text-xl text-white uppercase tracking-wider font-mono">{stake.symbol} Vault</div>
+                        <div className={`text-[10px] md:text-xs font-mono font-bold flex items-center gap-1.5 mt-1 uppercase tracking-widest ${stake.status === 'broken' ? 'text-red-500' : 'text-cyan-400'}`}>
+                            <Timer size={12} className="animate-pulse" /> {timeRemaining}
                         </div>
                     </div>
                 </div>
-                <div className="text-right">
-                    <div className="text-[10px] md:text-[12px] text-[#888] mb-1">Total Equity</div>
-                    <div className="font-bold text-[16px] md:text-[18px] text-white leading-tight">${totalEquity.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
+                <div className="text-left md:text-right w-full md:w-auto">
+                    <div className="text-[10px] font-mono uppercase tracking-widest text-slate-500 mb-1">Total Vault Equity</div>
+                    <div className="font-black text-2xl md:text-3xl text-white leading-none">${totalEquity.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
                 </div>
             </div>
             
-            <div className="mb-[15px] md:mb-[20px]">
-                <div className="flex justify-between text-[10px] md:text-[12px] mb-[6px] md:mb-[8px] text-[#aaa]">
-                    <span>Real-Time Progress</span>
-                    <span>{elapsedPercent.toFixed(5)}%</span>
+            <div className="mb-6 bg-slate-950 p-4 rounded-xl border border-slate-800 shadow-inner">
+                <div className="flex justify-between text-[10px] md:text-xs font-mono uppercase tracking-widest mb-3 text-slate-400">
+                    <span>Cryptographic Yield Progress</span>
+                    <span className="font-bold text-cyan-400">{elapsedPercent.toFixed(5)}%</span>
                 </div>
-                <div className="w-full h-2 md:h-2 bg-[#222] rounded-full overflow-hidden">
+                <div className="w-full h-2 bg-slate-900 rounded-full overflow-hidden border border-slate-800">
                     <motion.div 
                         animate={{ width: `${elapsedPercent}%` }} 
                         transition={{ ease: "linear", duration: 0.1 }}
-                        className="h-full"
-                        style={{ background: stake.status === 'broken' ? THEME.danger : THEME.accentGradient }} 
+                        className={`h-full ${stake.status === 'broken' ? 'bg-red-500' : 'bg-gradient-to-r from-cyan-600 to-cyan-400 shadow-[0_0_10px_rgba(6,182,212,0.8)]'}`} 
                     />
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-[10px] md:gap-[15px] p-[12px] md:p-[15px] rounded-xl md:rounded-[12px] mb-[15px] md:mb-[20px]" style={{ background: "rgba(255,255,255,0.03)" }}>
-                <div className="flex justify-between md:block text-left">
-                    <div className="text-[10px] md:text-[11px] text-[#888] mb-[2px] md:mb-[4px]">STAKED</div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4 p-4 md:p-5 rounded-xl bg-slate-900/50 border border-slate-800 mb-6">
+                <div className="flex justify-between md:block text-left pb-3 md:pb-0 border-b md:border-b-0 border-slate-800">
+                    <div className="text-[10px] font-mono uppercase tracking-widest text-slate-500 mb-1">Locked Principal</div>
                     <div className="text-right md:text-left">
-                        <div className="font-bold text-white text-[12px] md:text-sm">{stake.amount} {stake.symbol}</div>
-                        <div className="text-[9px] md:text-[10px] text-[#666]">Entry: ${stake.entryPrice.toFixed(2)}</div>
+                        <div className="font-black text-white text-sm md:text-base font-mono">{stake.amount} {stake.symbol}</div>
+                        <div className="text-[10px] text-slate-500 font-mono mt-0.5">Entry: ${stake.entryPrice.toFixed(2)}</div>
                     </div>
                 </div>
-                <div className="flex justify-between md:block text-center md:text-center border-t md:border-t-0 pt-2 md:pt-0 border-white/5">
-                    <div className="text-[10px] md:text-[11px] text-[#888] mb-[2px] md:mb-[4px]">EARNED</div>
+                <div className="flex justify-between md:block md:text-center pb-3 md:pb-0 border-b md:border-b-0 border-slate-800 md:border-l md:border-r border-slate-800">
+                    <div className="text-[10px] font-mono uppercase tracking-widest text-slate-500 mb-1">Generated Yield</div>
                     <div className="text-right md:text-center">
-                        <div className="font-bold text-[12px] md:text-sm" style={{ color: THEME.success }}>+{earnedCrypto.toFixed(7)}</div>
-                        <div className="text-[9px] md:text-[10px] text-[#666]">+${earnedUsd.toFixed(2)}</div>
+                        <div className="font-black text-sm md:text-base font-mono text-emerald-400 drop-shadow-[0_0_5px_rgba(52,211,153,0.3)]">+{earnedCrypto.toFixed(7)}</div>
+                        <div className="text-[10px] text-slate-500 font-mono mt-0.5">+${earnedUsd.toFixed(2)}</div>
                     </div>
                 </div>
-                <div className="flex justify-between md:block text-right border-t md:border-t-0 pt-2 md:pt-0 border-white/5">
-                    <div className="text-[10px] md:text-[11px] text-[#888] mb-[2px] md:mb-[4px]">PNL (PRICE)</div>
+                <div className="flex justify-between md:block text-right">
+                    <div className="text-[10px] font-mono uppercase tracking-widest text-slate-500 mb-1">Market Fluctuation</div>
                     <div className="text-right">
-                        <div className="font-bold text-[12px] md:text-sm" style={{ color: pnlPercent >= 0 ? THEME.success : THEME.danger }}>
+                        <div className={`font-black text-sm md:text-base font-mono ${pnlPercent >= 0 ? 'text-emerald-400' : 'text-red-500'}`}>
                             {pnlPercent >= 0 ? "+" : ""}{pnlPercent.toFixed(2)}%
                         </div>
-                        <div className="text-[9px] md:text-[10px]" style={{ color: pnlUsd >= 0 ? THEME.success : THEME.danger }}>
+                        <div className={`text-[10px] font-mono mt-0.5 ${pnlUsd >= 0 ? 'text-emerald-500/70' : 'text-red-500/70'}`}>
                             {pnlUsd >= 0 ? "+" : ""}${pnlUsd.toFixed(2)}
                         </div>
                     </div>
@@ -419,8 +455,8 @@ const ActiveStakeItem = ({ stake, livePrice, onBreak }: any) => {
 
             {stake.status === 'active' && (
                 <div className="flex justify-end">
-                    <button onClick={onBreak} className="w-full md:w-auto px-[20px] py-[12px] md:py-[10px] bg-transparent rounded-xl md:rounded-[8px] text-[12px] md:text-[13px] font-bold cursor-pointer flex items-center justify-center md:justify-start gap-[8px] transition hover:bg-white/5" style={{ border: "1px solid #333", color: "#666" }}>
-                        <X size={14} /> Break Stake
+                    <button onClick={onBreak} className="w-full md:w-auto px-6 py-3 bg-red-500/5 hover:bg-red-500/10 border border-red-900/50 hover:border-red-500/50 rounded-xl text-red-400/80 hover:text-red-400 text-[10px] md:text-xs font-bold font-mono uppercase tracking-widest cursor-pointer flex items-center justify-center gap-2 transition-all group shadow-sm">
+                        <Shield size={14} className="group-hover:drop-shadow-[0_0_5px_rgba(239,68,68,0.8)]"/> Breach Vault
                     </button>
                 </div>
             )}
@@ -436,45 +472,48 @@ const StakingCard = ({ plan, balance, livePrice, change24h, onStake, onBuy }: an
     const potentialGain = details.min * (details.rate / 100) * (selectedDuration / 365);
 
     return (
-        <div className="p-5 md:p-[25px] flex flex-col rounded-2xl md:rounded-[16px]" style={{ background: "#11141D", border: "1px solid rgba(255,255,255,0.05)", boxShadow: "0 10px 30px rgba(0,0,0,0.3)" }}>
-            <div className="flex justify-between items-start mb-[15px] md:mb-[20px]">
-                <div className="flex gap-[10px] md:gap-[12px]">
-                    <img src={plan.icon} className="w-10 h-10 md:w-[40px] md:h-[40px] rounded-full" alt={plan.name} />
+        <div className="p-6 md:p-8 flex flex-col rounded-2xl md:rounded-[24px] bg-[#0a0f18]/80 backdrop-blur-sm border border-slate-800 shadow-xl hover:border-cyan-900/50 hover:shadow-[0_10px_30px_rgba(6,182,212,0.05)] transition-all group">
+            <div className="flex justify-between items-start mb-6">
+                <div className="flex gap-4">
+                    <div className="w-12 h-12 rounded-full bg-slate-950 border border-slate-700 flex items-center justify-center p-1 shadow-inner group-hover:border-cyan-500/30 transition-colors">
+                        <img src={plan.icon} className="w-full h-full rounded-full" alt={plan.name} />
+                    </div>
                     <div>
-                        <h3 className="text-[15px] md:text-[16px] font-bold text-white leading-tight">{plan.name}</h3>
-                        <div className="text-[11px] md:text-[12px]" style={{ color: THEME.accent }}>{plan.symbol}</div>
+                        <h3 className="text-base md:text-lg font-black text-white uppercase tracking-wider font-mono">{plan.name}</h3>
+                        <div className="text-[10px] md:text-xs font-mono uppercase tracking-widest mt-1 text-cyan-500">{plan.symbol} NODE</div>
                     </div>
                 </div>
                 <div className="text-right">
-                    <div className="font-bold text-white text-[14px] md:text-base leading-tight">${livePrice?.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
-                    <div className="text-[10px] md:text-[11px] flex items-center justify-end gap-[2px] mt-1" style={{ color: change24h >= 0 ? THEME.success : THEME.danger }}>
+                    <div className="font-black text-white text-base md:text-lg font-mono">${livePrice?.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
+                    <div className={`text-[10px] md:text-xs font-mono font-bold flex items-center justify-end gap-1 mt-1 uppercase tracking-widest ${change24h >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                         {change24h >= 0 ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
                         {Math.abs(change24h).toFixed(2)}%
                     </div>
                 </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-[8px] md:gap-[10px] mb-[8px] md:mb-[10px]">
-                <button onClick={() => setSelectedDuration(7)} className="p-[8px] md:p-[10px] rounded-xl md:rounded-[8px] bg-transparent text-white cursor-pointer text-[12px] md:text-[13px] transition-all" style={{ border: selectedDuration === 7 ? `1px solid ${THEME.accent}` : "1px solid rgba(255,255,255,0.1)" }}>7 Days</button>
-                <button onClick={() => setSelectedDuration(14)} className="p-[8px] md:p-[10px] rounded-xl md:rounded-[8px] bg-transparent text-white cursor-pointer text-[12px] md:text-[13px] transition-all" style={{ border: selectedDuration === 14 ? `1px solid ${THEME.accent}` : "1px solid rgba(255,255,255,0.1)" }}>14 Days</button>
+            <div className="text-[10px] font-mono text-slate-500 uppercase tracking-widest mb-3 ml-1">Select Lock Duration</div>
+            <div className="grid grid-cols-2 gap-3 mb-3">
+                <button onClick={() => setSelectedDuration(7)} className={`py-3 rounded-xl font-bold font-mono text-[10px] uppercase tracking-widest transition-all ${selectedDuration === 7 ? 'bg-cyan-500/10 border border-cyan-500/50 text-cyan-400 shadow-[inset_0_0_10px_rgba(6,182,212,0.15)]' : 'bg-slate-950 border border-slate-800 text-slate-500 hover:text-slate-300 hover:border-slate-700'}`}>7 Days</button>
+                <button onClick={() => setSelectedDuration(14)} className={`py-3 rounded-xl font-bold font-mono text-[10px] uppercase tracking-widest transition-all ${selectedDuration === 14 ? 'bg-cyan-500/10 border border-cyan-500/50 text-cyan-400 shadow-[inset_0_0_10px_rgba(6,182,212,0.15)]' : 'bg-slate-950 border border-slate-800 text-slate-500 hover:text-slate-300 hover:border-slate-700'}`}>14 Days</button>
             </div>
-            <div className="mb-[20px] md:mb-[30px]">
-                <button onClick={() => setSelectedDuration(30)} className="w-full p-[8px] md:p-[10px] rounded-xl md:rounded-[8px] bg-transparent text-white cursor-pointer text-[12px] md:text-[13px] transition-all" style={{ border: selectedDuration === 30 ? `1px solid ${THEME.accent}` : "1px solid rgba(255,255,255,0.1)" }}>30 Days</button>
+            <div className="mb-8">
+                <button onClick={() => setSelectedDuration(30)} className={`w-full py-3 rounded-xl font-bold font-mono text-[10px] uppercase tracking-widest transition-all ${selectedDuration === 30 ? 'bg-cyan-500/10 border border-cyan-500/50 text-cyan-400 shadow-[inset_0_0_10px_rgba(6,182,212,0.15)]' : 'bg-slate-950 border border-slate-800 text-slate-500 hover:text-slate-300 hover:border-slate-700'}`}>30 Days</button>
             </div>
 
-            <div className="grid gap-[10px] md:gap-[12px] mb-[20px] md:mb-[30px] text-[11px] md:text-[12px] text-[#888]">
-                <div className="flex justify-between"><span>APY Rate</span><span className="font-bold text-white">{details.rate.toFixed(2)}%</span></div>
-                <div className="flex justify-between"><span>Min Stake</span><span className="font-bold text-white">{fmt(details.min)} {plan.symbol}</span></div>
-                <div className="flex justify-between pt-[8px] md:pt-[10px] border-t border-white/10">
-                    <span>Potential Return ({selectedDuration}d)</span>
-                    <span className="font-bold" style={{ color: THEME.success }}>+{fmt(potentialGain)} {plan.symbol}</span>
+            <div className="grid gap-3 mb-8 text-[10px] md:text-xs font-mono uppercase tracking-widest bg-slate-950 p-4 rounded-xl border border-slate-800 shadow-inner">
+                <div className="flex justify-between text-slate-400"><span>APY Yield Rate</span><span className="font-black text-white">{details.rate.toFixed(2)}%</span></div>
+                <div className="flex justify-between text-slate-400"><span>Min Configuration</span><span className="font-bold text-white">{fmt(details.min)} {plan.symbol}</span></div>
+                <div className="flex justify-between pt-3 border-t border-slate-800 mt-1">
+                    <span className="text-slate-500">Est. Return ({selectedDuration}d)</span>
+                    <span className="font-black text-emerald-400 drop-shadow-[0_0_5px_rgba(52,211,153,0.3)]">+{fmt(potentialGain)} {plan.symbol}</span>
                 </div>
             </div>
 
             {balance > 0 ? (
-                <button onClick={onStake} className="w-full p-[14px] md:p-[14px] border-none rounded-xl md:rounded-[8px] text-white font-bold cursor-pointer text-[13px] md:text-[14px] transition hover:opacity-90" style={{ background: THEME.accentGradient }}>Stake</button>
+                <button onClick={onStake} className="w-full py-4 border-none rounded-xl text-slate-900 font-black uppercase tracking-widest text-xs md:text-sm transition-all bg-gradient-to-r from-cyan-500 to-cyan-400 hover:from-cyan-400 hover:to-cyan-300 shadow-[0_10px_20px_rgba(6,182,212,0.2)] hover:shadow-[0_15px_25px_rgba(6,182,212,0.3)] active:scale-95">Deploy Node</button>
             ) : (
-                <button onClick={onBuy} className="w-full p-[14px] md:p-[14px] bg-[#22c55e] border-none rounded-xl md:rounded-[8px] text-white font-bold cursor-pointer flex items-center justify-center gap-[8px] text-[13px] md:text-[14px] transition hover:bg-[#16a34a]">Buy {plan.symbol}</button>
+                <button onClick={onBuy} className="w-full py-4 bg-slate-900 border border-slate-700 hover:bg-slate-800 hover:border-emerald-500/50 text-white font-bold uppercase tracking-widest text-xs md:text-sm transition-colors flex items-center justify-center gap-2 shadow-sm">Initialize {plan.symbol}</button>
             )}
         </div>
     );

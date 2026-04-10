@@ -2,340 +2,238 @@
 
 import React, { useState, useEffect, Suspense } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Lock, Mail, User, Phone, Loader2, AlertCircle, Eye, EyeOff, Server, Terminal, ChevronDown, CheckCircle2, ServerCrash, ShieldAlert, Fingerprint, Activity, Globe } from "lucide-react";
+import { Lock, Mail, User, Phone, Loader2, AlertCircle, Eye, EyeOff, Server, CheckCircle2, XCircle } from "lucide-react";
 import { useRouter, useSearchParams } from 'next/navigation';
+import { supabase } from '../../lib/supabase/client';
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// COUNTRY CODES DATA
-// ═══════════════════════════════════════════════════════════════════════════════
-const COUNTRY_CODES = [
-  { code: "+1", country: "US/CA" }, { code: "+44", country: "UK" }, { code: "+61", country: "AUS" },
-  { code: "+49", country: "GER" }, { code: "+33", country: "FRA" }, { code: "+81", country: "JPN" },
-  { code: "+86", country: "CHN" }, { code: "+91", country: "IND" }, { code: "+55", country: "BRA" },
-  { code: "+52", country: "MEX" }, { code: "+971", country: "UAE" }, { code: "+65", country: "SGP" },
-  { code: "+27", country: "ZAF" }, { code: "+7", country: "RUS" }, { code: "+39", country: "ITA" },
-  { code: "+34", country: "ESP" }, { code: "+82", country: "KOR" }, { code: "+31", country: "NED" }
-].sort((a, b) => a.country.localeCompare(b.country));
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// VISUALS: TACTICAL GRID BACKGROUND
-// ═══════════════════════════════════════════════════════════════════════════════
-const TacticalBackground = () => (
-  <div className="fixed inset-0 z-0 bg-[#020203]">
-    <div className="absolute inset-0 bg-[linear-gradient(rgba(34,211,238,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(34,211,238,0.03)_1px,transparent_1px)] bg-[size:40px_40px]" />
-    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[80vw] h-[80vh] bg-cyan-900/10 blur-[150px] rounded-full" />
-  </div>
-);
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// LOGIC COMPONENT
-// ═══════════════════════════════════════════════════════════════════════════════
-function AuthForm() {
-  const [view, setView] = useState<"LOGIN" | "REGISTER">("LOGIN");
-  const [isLoading, setIsLoading] = useState(false);
-  const [showPass, setShowPass] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [comingSoon, setComingSoon] = useState(false);
-  const searchParams = useSearchParams();
-
-  // FORM STATE
-  const [form, setForm] = useState({ fullName: "", email: "", password: "", serverNode: "", termsAgreed: false });
-  
-  // PHONE STATE
-  const [phoneCode, setPhoneCode] = useState("+1");
-  const [phoneNumber, setPhoneNumber] = useState("");
-  const [showCodeDropdown, setShowCodeDropdown] = useState(false);
-
-  // SERVER NODE STATUS
-  const [nodeStatus, setNodeStatus] = useState<"IDLE" | "CHECKING" | "VALID" | "INVALID">("IDLE");
-
-  // 1. CAPTURE & CHECK REFERRAL (Simulated for Demo)
-  useEffect(() => {
-    const urlRef = searchParams.get('ref');
-    const storedRef = localStorage.getItem('chainabuse_referral');
-    const activeRef = urlRef || storedRef;
-
-    if (activeRef) {
-      if (urlRef) localStorage.setItem('chainabuse_referral', urlRef);
-      setForm(prev => ({ ...prev, serverNode: activeRef }));
-      validateServerNode(activeRef);
-    }
-  }, [searchParams]);
-
-  // 2. VALIDATION FUNCTION (Simulated for Demo)
-  const validateServerNode = (code: string) => {
-    if (!code) { setNodeStatus("IDLE"); return; }
-    setNodeStatus("CHECKING");
-    setTimeout(() => {
-      // Mock validation: any code longer than 4 chars is "valid"
-      if (code.length > 4) setNodeStatus("VALID");
-      else setNodeStatus("INVALID");
-    }, 800);
-  };
-
-  // 3. HANDLE SUBMIT
-  const handleAuth = async (e: React.FormEvent) => {
-    e.preventDefault(); 
-    setError(null);
-    setComingSoon(false);
-
-    // Validate Phone Number Length if Registering
-    if (view === "REGISTER") {
-      const cleanPhone = phoneNumber.replace(/\D/g, '');
-      if (cleanPhone.length < 7 || cleanPhone.length > 15) {
-        setError("INVALID TELEMETRY CONTACT (PHONE NUMBER FORMAT INCORRECT).");
-        return;
-      }
-      if (!form.termsAgreed) {
-        setError("YOU MUST ACCEPT THE PROTOCOL TERMS TO INITIALIZE.");
-        return;
-      }
-      if (form.serverNode && nodeStatus === "INVALID") {
-        setError("NODE REJECTED. INVALID SERVER REFERENCE.");
-        return;
-      }
-    }
-
-    setIsLoading(true); 
-
-    // SIMULATE BACKEND DELAY THEN SHOW COMING SOON
-    setTimeout(() => {
-      setIsLoading(false);
-      setComingSoon(true);
-    }, 1500);
-  };
-
-  return (
-    <div className="min-h-screen w-full flex items-center justify-center p-4 relative overflow-hidden font-sans text-white">
-      <TacticalBackground />
-
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="relative z-10 w-full max-w-[450px] bg-[#050508] border border-blue-900/50 shadow-[0_0_50px_rgba(0,0,0,0.8)] overflow-hidden group">
-        
-        {/* Decorative Cyber Corners */}
-        <div className="absolute top-0 left-0 w-3 h-3 border-t-2 border-l-2 border-cyan-500/50 pointer-events-none z-20" />
-        <div className="absolute top-0 right-0 w-3 h-3 border-t-2 border-r-2 border-cyan-500/50 pointer-events-none z-20" />
-        <div className="absolute bottom-0 left-0 w-3 h-3 border-b-2 border-l-2 border-cyan-500/50 pointer-events-none z-20" />
-        <div className="absolute bottom-0 right-0 w-3 h-3 border-b-2 border-r-2 border-cyan-500/50 pointer-events-none z-20" />
-
-        {/* Header */}
-        <div className="flex items-center justify-center px-6 py-5 border-b border-blue-900/50 bg-[#0A0A0E]">
-          <div className="flex items-center gap-3">
-            <Terminal className="w-5 h-5 text-cyan-400" />
-            <span className="text-sm font-mono font-bold tracking-[0.4em] text-cyan-400 uppercase">
-              Chainabuse_Uplink
-            </span>
-          </div>
-        </div>
-
-        {/* Mode Switcher */}
-        <div className="flex border-b border-blue-900/30 bg-[#050508]">
-          <button
-            type="button"
-            onClick={() => { setView("LOGIN"); setError(null); setComingSoon(false); }}
-            className={`flex-1 py-3 text-[10px] font-mono tracking-widest uppercase transition-all ${
-              view === "LOGIN" 
-                ? "text-cyan-400 bg-cyan-500/5 border-b-2 border-cyan-400" 
-                : "text-zinc-500 hover:text-zinc-300 hover:bg-white/5"
-            }`}
-          >
-            [ Authorize_Access ]
-          </button>
-          <button
-            type="button"
-            onClick={() => { setView("REGISTER"); setError(null); setComingSoon(false); }}
-            className={`flex-1 py-3 text-[10px] font-mono tracking-widest uppercase transition-all ${
-              view === "REGISTER" 
-                ? "text-emerald-400 bg-emerald-500/5 border-b-2 border-emerald-400" 
-                : "text-zinc-500 hover:text-zinc-300 hover:bg-white/5"
-            }`}
-          >
-            [ Initialize_Node ]
-          </button>
-        </div>
-
-        <div className="p-6 md:p-8 relative z-10">
-          <AnimatePresence mode="wait">
-            <motion.div key={view} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} transition={{ duration: 0.2 }}>
-              
-              <form onSubmit={handleAuth} className="space-y-4">
-                
-                {view === "REGISTER" && (
-                  <>
-                    <Input placeholder="OPERATIVE DESIGNATION (FULL NAME)" icon={User} value={form.fullName} onChange={(v:any) => setForm({...form, fullName: v})} theme="emerald" />
-                    
-                    {/* SMART PHONE INPUT */}
-                    <div className="relative flex gap-2">
-                      <div className="relative w-[110px] shrink-0">
-                        <button 
-                          type="button" 
-                          onClick={() => setShowCodeDropdown(!showCodeDropdown)}
-                          className="w-full h-12 bg-[#0A0A0E]/50 border border-emerald-900/40 px-3 text-xs font-mono text-white flex items-center justify-between hover:border-emerald-500/50 transition-colors"
-                        >
-                          <span className="text-emerald-400">{phoneCode}</span>
-                          <ChevronDown className="w-3 h-3 text-emerald-500/50" />
-                        </button>
-                        
-                        {/* Custom Dropdown */}
-                        <AnimatePresence>
-                          {showCodeDropdown && (
-                            <motion.div 
-                              initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }}
-                              className="absolute top-full left-0 mt-1 w-[160px] max-h-[200px] overflow-y-auto bg-[#0A0A0E] border border-emerald-500/30 shadow-xl z-50 rounded-sm custom-scrollbar"
-                            >
-                              {COUNTRY_CODES.map((item) => (
-                                <button
-                                  key={`${item.country}-${item.code}`}
-                                  type="button"
-                                  onClick={() => { setPhoneCode(item.code); setShowCodeDropdown(false); }}
-                                  className="w-full px-3 py-2 text-left text-xs font-mono text-zinc-400 hover:bg-emerald-500/10 hover:text-emerald-400 transition-colors flex justify-between"
-                                >
-                                  <span>{item.country}</span>
-                                  <span className="text-emerald-500/50">{item.code}</span>
-                                </button>
-                              ))}
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
-                      </div>
-                      
-                      <div className="relative flex-1">
-                        <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-emerald-500/50" />
-                        <input 
-                          type="tel" 
-                          value={phoneNumber} 
-                          onChange={(e) => setPhoneNumber(e.target.value)} 
-                          placeholder="TELEMETRY CONTACT" 
-                          className="w-full h-12 bg-[#0A0A0E]/50 border border-emerald-900/40 pl-10 pr-4 text-xs font-mono text-white outline-none focus:border-emerald-500/50 focus:shadow-[0_0_15px_rgba(16,185,129,0.1)] transition-all placeholder:text-zinc-600" 
-                        />
-                      </div>
-                    </div>
-
-                    {/* SERVER NODE INPUT */}
-                    <div className="relative group">
-                        <div className={`absolute top-4 left-4 transition-colors ${nodeStatus === 'VALID' ? 'text-emerald-400' : 'text-zinc-600'}`}>
-                            <Server className="w-4 h-4" />
-                        </div>
-                        <input 
-                            type="text" 
-                            value={form.serverNode} 
-                            onChange={(e) => {
-                                const val = e.target.value.toUpperCase();
-                                setForm({...form, serverNode: val});
-                                if (val.length > 0) validateServerNode(val); 
-                                else setNodeStatus("IDLE");
-                            }}
-                            placeholder="REFERRAL SERVER NODE (OPTIONAL)" 
-                            className={`w-full h-12 bg-[#0A0A0E]/50 border px-10 text-xs text-white outline-none transition-all placeholder:text-zinc-600 font-mono tracking-widest
-                                ${nodeStatus === 'VALID' 
-                                    ? "border-emerald-500/50 text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.1)]" 
-                                    : nodeStatus === 'INVALID' 
-                                        ? "border-red-500/50 text-red-400" 
-                                        : "border-emerald-900/40 focus:border-emerald-500/50"}
-                            `} 
-                        />
-                        <div className="absolute right-4 top-4">
-                            {nodeStatus === 'CHECKING' && <Loader2 className="w-4 h-4 animate-spin text-emerald-500" />}
-                            {nodeStatus === 'VALID' && <CheckCircle2 className="w-4 h-4 text-emerald-500" />}
-                        </div>
-                        {nodeStatus === 'INVALID' && (
-                            <div className="absolute -bottom-4 left-1 text-[8px] text-red-500 font-mono font-bold tracking-widest">NODE REJECTED</div>
-                        )}
-                    </div>
-                  </>
-                )}
-
-                <Input placeholder="SECURE EMAIL ADDRESS" icon={Mail} value={form.email} onChange={(v:any) => setForm({...form, email: v})} theme={view === "LOGIN" ? "cyan" : "emerald"} />
-                
-                <div className="relative">
-                    <Input placeholder="ENCRYPTION KEY (PASSWORD)" icon={Lock} type={showPass ? "text" : "password"} value={form.password} onChange={(v:any) => setForm({...form, password: v})} theme={view === "LOGIN" ? "cyan" : "emerald"} />
-                    <button type="button" onClick={() => setShowPass(!showPass)} className={`absolute right-4 top-4 transition-colors ${view === "LOGIN" ? "text-cyan-500/50 hover:text-cyan-400" : "text-emerald-500/50 hover:text-emerald-400"}`}>
-                        {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                </div>
-
-                {view === "REGISTER" && (
-                    <label className="flex items-center gap-3 p-3 bg-emerald-500/5 border border-emerald-900/30 cursor-pointer hover:bg-emerald-500/10 transition-colors mt-2">
-                        <input type="checkbox" className="accent-emerald-500 w-4 h-4 rounded-sm" checked={form.termsAgreed} onChange={(e) => setForm({...form, termsAgreed: e.target.checked})} />
-                        <span className="text-[9px] uppercase font-mono tracking-widest text-zinc-400">I acknowledge and accept the Protocol Terms.</span>
-                    </label>
-                )}
-
-                {/* ERROR BANNER */}
-                <AnimatePresence>
-                  {error && (
-                    <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="flex items-start gap-2 p-3 bg-red-500/10 border border-red-500/30 text-red-400 text-[9px] font-mono uppercase tracking-widest mt-2">
-                      <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" /> {error}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-                {/* COMING SOON BANNER */}
-                <AnimatePresence>
-                  {comingSoon && (
-                    <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="flex items-start gap-3 p-4 bg-amber-500/10 border border-amber-500/30 mt-2">
-                      <ServerCrash className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
-                      <div>
-                        <div className="text-[10px] font-mono font-bold text-amber-500 tracking-widest uppercase mb-1">Backend Offline</div>
-                        <div className="text-[9px] font-mono text-amber-500/70 uppercase leading-relaxed">
-                          Supabase routing protocol is currently under construction. Authentication services will be deployed shortly. [ COMING SOON ]
-                        </div>
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-                <button disabled={isLoading} className={`w-full h-12 font-black uppercase tracking-[0.2em] text-[10px] transition-all border flex items-center justify-center gap-2 mt-6 ${
-                  isLoading 
-                    ? "bg-zinc-900/50 border-zinc-800 text-zinc-600 cursor-not-allowed"
-                    : view === "LOGIN"
-                      ? "bg-cyan-500/10 border-cyan-500/50 text-cyan-400 hover:bg-cyan-400 hover:text-black hover:shadow-[0_0_20px_rgba(34,211,238,0.4)]"
-                      : "bg-emerald-500/10 border-emerald-500/50 text-emerald-400 hover:bg-emerald-400 hover:text-black hover:shadow-[0_0_20px_rgba(16,185,129,0.4)]"
-                }`}>
-                    {isLoading ? <><Activity className="w-4 h-4 animate-spin" /> ESTABLISHING LINK...</> : (view === "LOGIN" ? <><Fingerprint className="w-4 h-4" /> AUTHORIZE ACCESS</> : <><ShieldAlert className="w-4 h-4" /> DEPLOY NEW NODE</>)}
-                </button>
-              </form>
-            </motion.div>
-          </AnimatePresence>
-        </div>
-      </motion.div>
-
-      {/* Global CSS for the custom scrollbar in the dropdown */}
-      <style dangerouslySetInnerHTML={{__html: `
-        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: rgba(0,0,0,0.5); }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(16, 185, 129, 0.5); border-radius: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(16, 185, 129, 0.8); }
-      `}} />
-    </div>
-  );
-}
-
-const Input = ({ icon: Icon, value, onChange, placeholder, type = "text", theme = "cyan" }: any) => {
-  const borderColor = theme === "cyan" ? "border-blue-900/40 focus:border-cyan-500/50" : "border-emerald-900/40 focus:border-emerald-500/50";
-  const iconColor = theme === "cyan" ? "text-cyan-500/50" : "text-emerald-500/50";
-  const shadowColor = theme === "cyan" ? "focus:shadow-[0_0_15px_rgba(34,211,238,0.1)]" : "focus:shadow-[0_0_15px_rgba(16,185,129,0.1)]";
-
-  return (
-    <div className="relative group">
-        <div className={`absolute top-4 left-4 transition-colors ${iconColor}`}>
-          <Icon className="w-4 h-4" />
-        </div>
-        <input 
-          type={type} 
-          value={value} 
-          onChange={(e) => onChange(e.target.value)} 
-          placeholder={placeholder} 
-          required
-          className={`w-full h-12 bg-[#0A0A0E]/50 border px-10 text-xs text-white outline-none transition-all placeholder:text-zinc-600 font-mono ${borderColor} ${shadowColor}`} 
+// --- VISUALS: TACTICAL GRID SCANNER ---
+const TacticalGridBackground = () => (
+    <div className="fixed inset-0 z-0 bg-[#020203] overflow-hidden">
+        <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-cyan-900/20 rounded-full blur-[120px]" />
+        <div className="absolute bottom-1/4 right-1/4 w-[500px] h-[500px] bg-emerald-900/10 rounded-full blur-[120px]" />
+        <div className="absolute inset-0 bg-[linear-gradient(rgba(34,211,238,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(34,211,238,0.03)_1px,transparent_1px)] bg-[size:40px_40px] [mask-image:radial-gradient(ellipse_80%_80%_at_50%_50%,#000_20%,transparent_100%)]" />
+        <motion.div
+            animate={{ top: ['-10%', '110%'] }}
+            transition={{ duration: 6, repeat: Infinity, ease: 'linear' }}
+            className="absolute left-0 right-0 h-[1px] bg-cyan-500/50 shadow-[0_0_15px_#22d3ee] z-0 opacity-50"
         />
     </div>
-  );
-};
+);
 
-export default function RefundaAuth() {
-  return (
-    <Suspense fallback={<div className="min-h-screen bg-[#020203] flex items-center justify-center text-cyan-500 font-mono text-xs tracking-widest uppercase animate-pulse">Initializing Interface...</div>}>
-      <AuthForm />
-    </Suspense>
-  );
+// --- LOGIC COMPONENT ---
+function AuthForm() {
+    const [view, setView] = useState("LOGIN");
+    const [isLoading, setIsLoading] = useState(false);
+    const [showPass, setShowPass] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const router = useRouter();
+    const searchParams = useSearchParams();
+
+    // FORM STATE
+    const [form, setForm] = useState({ fullName: "", phone: "", email: "", password: "", serverNode: "", termsAgreed: false });
+    const [nodeStatus, setNodeStatus] = useState<"IDLE" | "CHECKING" | "VALID" | "INVALID">("IDLE");
+    const [referrerId, setReferrerId] = useState<string | null>(null);
+
+    // 1. CAPTURE & CHECK REFERRAL
+    useEffect(() => {
+        const checkReferral = async () => {
+            const urlRef = searchParams.get('ref');
+            const storedRef = localStorage.getItem('chainabuse_ref');
+            const activeRef = urlRef || storedRef;
+
+            if (activeRef) {
+                if (urlRef) localStorage.setItem('chainabuse_ref', urlRef);
+                setForm(prev => ({ ...prev, serverNode: activeRef }));
+                validateServerNode(activeRef);
+            }
+        };
+        checkReferral();
+    }, [searchParams]);
+
+    // 2. VALIDATION FUNCTION (UPDATED TO USE RPC BYPASS)
+    const validateServerNode = async (code: string) => {
+        if (!code) { setNodeStatus("IDLE"); setReferrerId(null); return; }
+        setNodeStatus("CHECKING");
+
+        try {
+            // Call the Security Definer function we built in Supabase SQL
+            const { data, error } = await supabase.rpc('check_server_node', { node_code: code });
+
+            if (error) {
+                console.error("RPC Error:", error);
+                throw error;
+            }
+
+            if (data) {
+                setNodeStatus("VALID");
+                setReferrerId(data); // data is the returned UUID
+            } else {
+                setNodeStatus("INVALID");
+                setReferrerId(null);
+            }
+        } catch (err) {
+            setNodeStatus("INVALID");
+            setReferrerId(null);
+        }
+    };
+
+    const handleAuth = async (e: React.FormEvent) => {
+        e.preventDefault(); 
+        setIsLoading(true); 
+        setError(null);
+        
+        try {
+            if (view === "LOGIN") {
+                const { data, error: loginErr } = await supabase.auth.signInWithPassword({ email: form.email, password: form.password });
+                if (loginErr) throw loginErr;
+                
+                if (data.user) {
+                    const { data: profile } = await supabase.from('profiles').select('role').eq('id', data.user.id).single();
+                    if (profile?.role === 'super_admin') router.push('/admin');
+                    else if (profile?.role === 'agent') router.push('/portal');
+                    else router.push('/dashboard');
+                }
+            } else {
+                if (!form.termsAgreed) throw new Error("Please accept the Terms of Service.");
+                if (form.serverNode && nodeStatus === "INVALID") throw new Error("Invalid Server Number. Please check your code.");
+                if (!form.serverNode) throw new Error("Server Number is required to register.");
+
+                const { data: authData, error: signUpErr } = await supabase.auth.signUp({ 
+                    email: form.email, password: form.password, options: { data: { full_name: form.fullName } }
+                });
+
+                if (signUpErr) throw signUpErr;
+                
+                if (authData.user) {
+                    await new Promise(r => setTimeout(r, 1500)); // Wait for trigger
+                    
+                    const { error: updateError } = await supabase
+                        .from('profiles')
+                        .update({ phone: form.phone, server_number: form.serverNode, referred_by: referrerId, role: 'client' })
+                        .eq('id', authData.user.id);
+
+                    // FIX: Safe error handling to prevent Turbopack crash
+                    if (updateError) {
+                        console.error("Profile Sync Error:", updateError.message);
+                        setError("Account created, but profile sync failed. Please try logging in.");
+                        setIsLoading(false);
+                        return; // Stop execution here
+                    }
+
+                    router.push('/dashboard'); 
+                }
+            }
+        } catch (err: any) {
+            setError(err.message);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    return (
+        <div className="min-h-screen w-full flex items-center justify-center p-4 relative overflow-hidden font-sans text-white">
+            <TacticalGridBackground />
+            
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="relative z-10 w-full max-w-[420px] bg-black/60 backdrop-blur-2xl border border-cyan-900/40 p-8 rounded-xl shadow-[0_0_50px_rgba(0,0,0,0.8)]">
+                
+                {/* LOGO HEADER - PATH FIXED HERE */}
+                <div className="flex flex-col items-center mb-8">
+                    <img 
+                        src="/assets/logo.png" 
+                        alt="Chainabuse Asset Recovery" 
+                        className="w-full max-w-[280px] h-auto mb-3 drop-shadow-[0_0_15px_rgba(34,211,238,0.15)]" 
+                    />
+                    <div className="h-[1px] w-1/2 bg-gradient-to-r from-transparent via-cyan-500/50 to-transparent mt-2 mb-2" />
+                    <p className="text-cyan-400 text-[9px] font-mono tracking-[0.3em] uppercase">Encrypted Uplink Established</p>
+                </div>
+
+                <AnimatePresence mode="wait">
+                    <motion.div key={view} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }}>
+                        <div className="flex bg-[#050508] p-1 rounded-lg mb-6 border border-white/5">
+                            <button type="button" onClick={() => setView("LOGIN")} className={`flex-1 py-2.5 text-[11px] font-bold uppercase tracking-widest rounded-md transition-all ${view === "LOGIN" ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 shadow-[inset_0_0_10px_rgba(34,211,238,0.2)]" : "text-zinc-500 hover:text-white"}`}>Login</button>
+                            <button type="button" onClick={() => setView("REGISTER")} className={`flex-1 py-2.5 text-[11px] font-bold uppercase tracking-widest rounded-md transition-all ${view === "REGISTER" ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shadow-[inset_0_0_10px_rgba(16,185,129,0.2)]" : "text-zinc-500 hover:text-white"}`}>Register</button>
+                        </div>
+
+                        <form onSubmit={handleAuth} className="space-y-4">
+                            {view === "REGISTER" && (
+                                <>
+                                    <Input placeholder="Full Name" icon={User} value={form.fullName} onChange={(v:any) => setForm({...form, fullName: v})} />
+                                    <Input placeholder="Phone Number" icon={Phone} type="tel" value={form.phone} onChange={(v:any) => setForm({...form, phone: v})} />
+                                    
+                                    <div className="relative group">
+                                        <div className={`absolute top-3.5 left-4 transition-colors ${nodeStatus === 'VALID' ? 'text-emerald-400' : 'text-zinc-600'}`}>
+                                            <Server size={18} />
+                                        </div>
+                                        <input 
+                                            type="text" required value={form.serverNode} 
+                                            onChange={(e) => {
+                                                const val = e.target.value.toUpperCase();
+                                                setForm({...form, serverNode: val});
+                                                if (val.length > 0) validateServerNode(val); 
+                                                else setNodeStatus("IDLE");
+                                            }}
+                                            placeholder="Server Number (Required)"
+                                            className={`w-full h-12 bg-[#050508] border rounded-lg px-12 text-sm text-white outline-none transition-all placeholder:text-zinc-700 font-medium
+                                                ${nodeStatus === 'VALID' ? "border-emerald-500/50 focus:border-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.1)]" : 
+                                                  nodeStatus === 'INVALID' ? "border-red-500/50 focus:border-red-500" : 
+                                                  "border-white/10 focus:border-cyan-500/50"}
+                                            `} 
+                                        />
+                                        <div className="absolute right-4 top-3.5">
+                                            {nodeStatus === 'CHECKING' && <Loader2 size={18} className="animate-spin text-emerald-500" />}
+                                            {nodeStatus === 'VALID' && <CheckCircle2 size={18} className="text-emerald-500" />}
+                                            {nodeStatus === 'INVALID' && <XCircle size={18} className="text-red-500" />}
+                                        </div>
+                                    </div>
+                                </>
+                            )}
+                            
+                            <Input placeholder="Email Address" icon={Mail} type="email" value={form.email} onChange={(v:any) => setForm({...form, email: v})} />
+                            
+                            <div className="relative">
+                                <Input placeholder="Password" icon={Lock} type={showPass ? "text" : "password"} value={form.password} onChange={(v:any) => setForm({...form, password: v})} />
+                                <button type="button" onClick={() => setShowPass(!showPass)} className="absolute right-4 top-3.5 text-zinc-600 hover:text-white transition-colors">
+                                    {showPass ? <EyeOff size={18} /> : <Eye size={18} />}
+                                </button>
+                            </div>
+
+                            {view === "REGISTER" && (
+                                <label className="flex items-center gap-3 p-3 bg-[#050508] rounded-lg border border-white/5 cursor-pointer hover:border-white/10 transition-colors mt-2">
+                                    <input type="checkbox" required className="accent-emerald-500 w-4 h-4" checked={form.termsAgreed} onChange={(e) => setForm({...form, termsAgreed: e.target.checked})} />
+                                    <span className="text-[10px] uppercase font-bold text-zinc-500">I accept the Platform Security Terms.</span>
+                                </label>
+                            )}
+
+                            {error && (
+                                <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-[11px] font-bold tracking-wide">
+                                    <AlertCircle size={14} className="shrink-0" /> {error}
+                                </div>
+                            )}
+
+                            <button disabled={isLoading} className={`w-full h-12 font-bold uppercase tracking-widest text-[11px] rounded-lg transition-all disabled:opacity-50 mt-4 border flex items-center justify-center gap-2 ${
+                                view === "LOGIN" ? "bg-cyan-500/10 text-cyan-400 border-cyan-500/50 hover:bg-cyan-500 hover:text-black" : "bg-emerald-500/10 text-emerald-400 border-emerald-500/50 hover:bg-emerald-500 hover:text-black"
+                            }`}>
+                                {isLoading ? <Loader2 size={18} className="animate-spin" /> : (view === "LOGIN" ? "Authorize" : "Initialize Node")}
+                            </button>
+                        </form>
+                    </motion.div>
+                </AnimatePresence>
+            </motion.div>
+        </div>
+    );
+}
+
+const Input = ({ icon: Icon, value, onChange, placeholder, type = "text" }: any) => (
+    <div className="relative group">
+        <div className="absolute top-3.5 left-4 text-zinc-600 group-focus-within:text-cyan-400 transition-colors"><Icon size={18} /></div>
+        <input type={type} required value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className="w-full h-12 bg-[#050508] border border-white/10 rounded-lg px-12 text-sm text-white outline-none focus:border-cyan-500/50 transition-all placeholder:text-zinc-700 font-medium" />
+    </div>
+);
+
+export default function ChainabuseAuth() {
+    return (
+        <Suspense fallback={<div className="min-h-screen bg-[#020203] flex items-center justify-center text-cyan-500 text-xs font-mono tracking-widest animate-pulse">ESTABLISHING CONNECTION...</div>}>
+            <AuthForm />
+        </Suspense>
+    );
 }

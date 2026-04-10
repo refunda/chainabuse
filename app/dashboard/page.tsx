@@ -1,9 +1,11 @@
 "use client";
 import React, { useState, useEffect, useRef } from "react";
-import { createClient } from "@supabase/supabase-js"; 
 import { useRouter } from "next/navigation";
-import { Loader2, Bell } from "lucide-react";
+import { Loader2, Bell, ShieldAlert } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+
+// Use the standardized Supabase client from our lib folder
+import { supabase } from '../../lib/supabase/client';
 
 // COMPONENTS
 import Layout from "./components/Layout";
@@ -12,12 +14,6 @@ import AssetsManager from "./components/AssetsManager";
 import SettingsView from "./components/SettingsView";
 import BuyCryptoView from "./components/BuyCryptoView";
 import StakingView from "./components/StakingView";
-
-// --- CONFIG ---
-const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!, 
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
 
 // --- HELPER: Format DB Data ---
 const formatAssets = (profile: any) => {
@@ -84,10 +80,10 @@ export default function DashboardPage() {
                 
                 if (error || !data) return;
 
-                // Check Ban Status
+                // Check Ban/Pause Status
                 if (data.admin_status === 'paused' || data.admin_status === 'deleted') {
                     await supabase.auth.signOut();
-                    alert("Account Locked.");
+                    alert("SECURITY ALERT: Node Access Locked by Administrator.");
                     router.replace("/");
                     return;
                 }
@@ -99,9 +95,13 @@ export default function DashboardPage() {
 
             await fetchProfile();
 
+            // FIX: Generate a completely unique channel ID for this specific mount.
+            // This prevents Next.js Strict Mode from crashing when it double-fires.
+            const uniqueChannelId = `tactical_uplink_${session.user.id}_${Date.now()}`;
+
             channel = supabase
-                .channel('dashboard_updates')
-                // 1. Listen for Profile Changes
+                .channel(uniqueChannelId)
+                // 1. Listen for Profile Changes (Balances / Bans)
                 .on('postgres_changes', { 
                     event: 'UPDATE', 
                     schema: 'public', 
@@ -110,11 +110,13 @@ export default function DashboardPage() {
                 }, 
                 (payload) => {
                     const newData = payload.new;
-                    if (newData.admin_status === 'paused') window.location.reload(); 
+                    if (newData.admin_status === 'paused' || newData.admin_status === 'deleted') {
+                        window.location.reload(); 
+                    }
                     setUserProfile(newData);
                     setRealAssets(formatAssets(newData));
                 })
-                // 2. THE MASTER REALTIME SUPPORT LISTENER (Works everywhere!)
+                // 2. THE MASTER REALTIME SUPPORT LISTENER
                 .on('postgres_changes', { 
                     event: 'INSERT', 
                     schema: 'public', 
@@ -133,13 +135,13 @@ export default function DashboardPage() {
                     // Speak Text
                     if ('speechSynthesis' in window) {
                         window.speechSynthesis.cancel(); 
-                        const utterance = new SpeechSynthesisUtterance("New message from Support");
+                        const utterance = new SpeechSynthesisUtterance("Incoming encrypted transmission from Support.");
                         utterance.rate = 1.0;
                         utterance.pitch = 1.0; 
                         window.speechSynthesis.speak(utterance);
                     }
 
-                    // Show Toast
+                    // Show Toast Notification
                     setNotification({ show: true, text: payload.new.message });
                     setTimeout(() => setNotification(null), 8000);
                 })
@@ -151,7 +153,7 @@ export default function DashboardPage() {
         return () => {
             if (channel) supabase.removeChannel(channel);
         };
-    }, []);
+    }, [router]);
 
     // --- HANDLERS ---
     const handleRedirect = (tabName: string) => { setActiveTab(tabName); };
@@ -159,8 +161,9 @@ export default function DashboardPage() {
 
     if (loading) {
         return (
-            <div className="min-h-screen bg-[#050505] flex items-center justify-center">
-                <Loader2 className="animate-spin text-purple-500" size={40} />
+            <div className="min-h-screen bg-[#020203] flex flex-col items-center justify-center font-mono">
+                <Loader2 className="animate-spin text-cyan-500 mb-4" size={40} />
+                <div className="text-cyan-500 text-xs tracking-[0.3em] uppercase animate-pulse">Decrypting User Telemetry...</div>
             </div>
         );
     }
@@ -200,7 +203,7 @@ export default function DashboardPage() {
                 <SettingsView initialTab={activeTab} user={userProfile} />
             )}
 
-            {/* --- GLOBAL NOTIFICATION TOAST --- */}
+            {/* --- GLOBAL TACTICAL NOTIFICATION TOAST --- */}
             <AnimatePresence>
                 {notification && (
                     <motion.div 
@@ -208,15 +211,17 @@ export default function DashboardPage() {
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: -20, scale: 0.9 }}
                         onClick={() => { setActiveTab("contact"); setNotification(null); }}
-                        className="fixed top-4 right-4 md:top-auto md:bottom-5 md:right-5 w-[90%] md:w-[320px] max-w-[400px] z-[9999] flex items-center gap-[15px] p-[15px] rounded-2xl cursor-pointer"
-                        style={{ background: "#1a1a1d", border: `1px solid #8b5cf6`, boxShadow: "0 10px 40px rgba(0,0,0,0.5)" }}
+                        className="fixed top-4 right-4 md:top-auto md:bottom-5 md:right-5 w-[90%] md:w-[320px] max-w-[400px] z-[9999] flex items-center gap-[15px] p-[15px] rounded-xl cursor-pointer bg-[#050508]/95 backdrop-blur-md border border-cyan-500/50 shadow-[0_10px_40px_rgba(34,211,238,0.15)] overflow-hidden"
                     >
-                        <div className="w-[40px] h-[40px] rounded-full bg-[#8b5cf6] flex items-center justify-center shrink-0">
-                            <Bell size={20} color="white" />
+                        {/* Scanning beam effect inside toast */}
+                        <motion.div animate={{ left: ["-100%", "200%"] }} transition={{ duration: 2, repeat: Infinity, ease: "linear" }} className="absolute top-0 bottom-0 w-1/2 bg-gradient-to-r from-transparent via-cyan-400/10 to-transparent skew-x-12 z-0" />
+                        
+                        <div className="relative z-10 w-[40px] h-[40px] rounded-lg bg-cyan-500/20 border border-cyan-500/50 flex items-center justify-center shrink-0">
+                            <ShieldAlert size={20} className="text-cyan-400" />
                         </div>
-                        <div className="flex-1 overflow-hidden">
-                            <div className="text-[13px] font-bold text-white mb-[2px]">New Support Message</div>
-                            <div className="text-[12px] text-[#aaa] whitespace-nowrap overflow-hidden text-ellipsis">{notification.text}</div>
+                        <div className="relative z-10 flex-1 overflow-hidden font-mono">
+                            <div className="text-[10px] font-bold text-cyan-400 mb-[2px] tracking-[0.2em] uppercase">Encrypted Uplink</div>
+                            <div className="text-[11px] text-zinc-300 whitespace-nowrap overflow-hidden text-ellipsis">{notification.text}</div>
                         </div>
                     </motion.div>
                 )}
