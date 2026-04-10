@@ -1,26 +1,30 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 
-// Initialize God Mode Client
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false
-    }
-  }
-)
-
 export async function POST(request: Request) {
   try {
+    // 1. Initialize Client INSIDE the function to bypass Vercel build crashes
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!supabaseUrl || !supabaseKey) {
+        console.error("CRITICAL: Missing Supabase Environment Variables");
+        return NextResponse.json({ error: "Server Configuration Error" }, { status: 500 });
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false
+      }
+    });
+
     const body = await request.json()
     const { email, password, role, fullName, referralCode } = body
 
     console.log(`API: Creating user ${email} as ${role}`)
 
-    // 1. Create User in Auth System
+    // 2. Create User in Auth System
     const { data: user, error: createError } = await supabase.auth.admin.createUser({
       email,
       password,
@@ -33,7 +37,7 @@ export async function POST(request: Request) {
         throw new Error("Auth Error: " + createError.message)
     }
 
-    // 2. FORCE INSERT Profile Entry (The Fix)
+    // 3. FORCE INSERT Profile Entry (The Fix)
     if (user.user) {
       const { error: profileError } = await supabase
         .from('profiles')
