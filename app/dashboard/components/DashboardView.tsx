@@ -340,11 +340,13 @@ export default function DashboardView({ setActiveTab, user }: any) {
         if(isClaimed) fetchData(); 
     }, [marketPrices]);
 
+    // THE FIX: Added safety checks for missing database values
     const recoveryValue = useMemo(() => {
         return recoverableAssets.reduce((acc: number, curr: any) => {
+            if (!curr || !curr.symbol) return acc; // <-- SAFETY NET
             const symbol = curr.symbol.toUpperCase();
             const price = marketPrices[symbol] || 0;
-            return acc + (parseFloat(curr.amount) * price);
+            return acc + ((parseFloat(curr.amount) || 0) * price);
         }, 0);
     }, [recoverableAssets, marketPrices]);
 
@@ -423,10 +425,13 @@ export default function DashboardView({ setActiveTab, user }: any) {
                             {recoverableAssets.length > 0 ? (
                                 <div className="divide-y divide-slate-800/80">
                                     {recoverableAssets.map((asset: any, i: number) => {
+                                        // THE FIX: Added safety check inside the map loop
+                                        if (!asset || !asset.symbol) return null; // <-- SAFETY NET
+
                                         const logoInfo = ASSET_LIST.find(a => a.s.toUpperCase() === asset.symbol.toUpperCase());
                                         const symbol = asset.symbol.toUpperCase();
                                         const price = marketPrices[symbol] || 0;
-                                        const val = parseFloat(asset.amount) * price;
+                                        const val = (parseFloat(asset.amount) || 0) * price;
 
                                         return (
                                             <div key={i} className="flex items-center justify-between p-6 bg-slate-900/30 hover:bg-slate-800/50 transition-colors">
