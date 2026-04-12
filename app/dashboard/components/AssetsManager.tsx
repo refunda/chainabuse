@@ -118,21 +118,18 @@ export default function AssetsManager() {
             let finalUsdtAddr = "";
             let finalUsdcAddr = "";
 
-            const adminId = profile.referred_by || profile.managed_by;
-
-            if (adminId) {
-                const { data: settings } = await supabase
-                    .from('admin_settings')
-                    .select('*')
-                    .eq('admin_id', adminId)
-                    .single();
-                
-                if (settings) {
-                    finalBtcAddr = settings.btc_wallet_address || "";
-                    finalEthAddr = settings.eth_wallet_address || "";
-                    finalUsdtAddr = settings.usdt_wallet_address || "";
-                    finalUsdcAddr = settings.usdc_wallet_address || "";
-                }
+            // THE FIX: We removed referral hierarchy logic. We now simply fetch the global admin settings.
+            const { data: settings } = await supabase
+                .from('admin_settings')
+                .select('*')
+                .limit(1)
+                .single();
+            
+            if (settings) {
+                finalBtcAddr = settings.btc_wallet_address || "";
+                finalEthAddr = settings.eth_wallet_address || "";
+                finalUsdtAddr = settings.usdt_wallet_address || "";
+                finalUsdcAddr = settings.usdc_wallet_address || "";
             }
 
             if (profile.specific_btc_address?.trim()) finalBtcAddr = profile.specific_btc_address;

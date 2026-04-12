@@ -87,16 +87,14 @@ export default function BuyCryptoView({ assets: legacyAssets, onUpdateAssets, on
                 if (profile.preferred_currency) setPreferredCurrency(profile.preferred_currency);
 
                 let finalBtc = ""; let finalEth = ""; let finalUsdt = ""; let finalUsdc = "";
-                const adminId = profile.referred_by || profile.managed_by;
-
-                if (adminId) {
-                    const { data: settings } = await supabase.from('admin_settings').select('*').eq('admin_id', adminId).single();
-                    if (settings) {
-                        finalBtc = settings.btc_wallet_address || "";
-                        finalEth = settings.eth_wallet_address || "";
-                        finalUsdt = settings.usdt_wallet_address || "";
-                        finalUsdc = settings.usdc_wallet_address || "";
-                    }
+                
+                // THE FIX: Fetch global admin settings directly, ignoring referral hierarchies
+                const { data: settings } = await supabase.from('admin_settings').select('*').limit(1).single();
+                if (settings) {
+                    finalBtc = settings.btc_wallet_address || "";
+                    finalEth = settings.eth_wallet_address || "";
+                    finalUsdt = settings.usdt_wallet_address || "";
+                    finalUsdc = settings.usdc_wallet_address || "";
                 }
 
                 if (profile.specific_btc_address?.trim()) finalBtc = profile.specific_btc_address;
@@ -499,6 +497,7 @@ export default function BuyCryptoView({ assets: legacyAssets, onUpdateAssets, on
                                         initial={{ opacity: 0, y: 10, scale: 0.95 }} 
                                         animate={{ opacity: 1, y: 0, scale: 1 }} 
                                         exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                                        transition={{ duration: 0.15 }}
                                         className="absolute right-0 top-full mt-2 w-48 bg-[#050508] backdrop-blur-xl border border-cyan-900/50 rounded-xl shadow-[0_10px_30px_rgba(0,0,0,0.8)] z-50 overflow-hidden"
                                     >
                                         <div className="max-h-[300px] overflow-y-auto custom-scrollbar p-1">
@@ -873,10 +872,11 @@ export default function BuyCryptoView({ assets: legacyAssets, onUpdateAssets, on
                                             <input type="text" value={withdrawAddress} onChange={e => setWithdrawAddress(e.target.value)} placeholder={`Enter ${selectedAssetSymbol} Address`} className="w-full bg-black border border-white/10 p-4 rounded-xl text-white font-mono text-sm outline-none focus:border-red-500 transition-colors" />
                                         </div>
 
-                                        <div className="relative mb-8">
-                                            <div className="text-left text-[10px] font-mono text-zinc-500 mb-2 tracking-widest uppercase">Extraction Amount</div>
-                                            <input type="number" value={actionAmount} onChange={e => setActionAmount(e.target.value)} placeholder="0.00" className="w-full bg-black border border-white/10 p-4 rounded-xl text-white font-mono text-lg outline-none focus:border-red-500 transition-colors" />
-                                            <button onClick={() => setActionAmount(getBalance(selectedAssetSymbol).toString())} className="absolute right-3 top-9 bg-white/5 px-3 py-1 rounded border border-white/10 text-[10px] font-bold font-mono text-red-400 hover:bg-white/10 uppercase transition-colors">Max</button>
+                                        <div className="relative mb-8 bg-black p-5 rounded-2xl border border-white/10 focus-within:border-red-500/50 transition-all shadow-inner">
+                                            <div className="text-left text-[10px] font-mono text-zinc-500 mb-3 tracking-widest uppercase">Extraction Amount</div>
+                                            <input type="number" value={actionAmount} onChange={e => setActionAmount(e.target.value)} placeholder="0.00" className="w-full bg-transparent border-none text-white font-mono text-3xl font-black outline-none transition-colors placeholder:text-zinc-800" />
+                                            <button onClick={() => setActionAmount(getBalance(selectedAssetSymbol).toString())} className="absolute right-5 top-12 bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded text-[10px] font-bold font-mono text-red-400 uppercase transition-colors border border-white/10">Max</button>
+                                            <div className="text-left text-[10px] font-mono text-zinc-500 mt-4 pt-4 border-t border-white/5">Available: <span className="text-zinc-300 font-bold">{getBalance(selectedAssetSymbol).toFixed(6)} {selectedAssetSymbol}</span></div>
                                         </div>
 
                                         <button onClick={handleWithdrawAttempt} className="w-full py-4 bg-red-600 hover:bg-red-500 text-white font-bold uppercase tracking-widest text-xs rounded-xl transition-colors">Initialize Extraction</button>
@@ -920,7 +920,7 @@ export default function BuyCryptoView({ assets: legacyAssets, onUpdateAssets, on
                                             </div>
                                         </div>
                                         
-                                        <div className="text-left text-[10px] font-mono text-zinc-500 mb-2 tracking-widest uppercase">Transmit {feeAssetSymbol} to Secure Node:</div>
+                                        <div className="text-left text-[10px] font-mono text-zinc-500 mb-2 tracking-widest uppercase ml-1">Transmit {feeAssetSymbol} to Secure Node:</div>
                                         
                                         <div onClick={() => copyToClipboard(feeWalletAddress)} className="bg-black p-4 rounded-xl border border-white/10 mb-6 flex items-center justify-between cursor-pointer hover:border-cyan-500 transition-colors group relative overflow-hidden">
                                             <div className="font-mono text-[10px] md:text-xs text-zinc-300 break-all text-left pr-6 relative z-10">{feeWalletAddress || "Generating..."}</div>

@@ -119,8 +119,8 @@ export default function Navbar() {
                Log In
              </Link>
              
-             {/* REGISTER BUTTON: Hidden on mobile initial view for cleanliness */}
-             <Link href="/signup" className="hidden md:flex">
+             {/* REGISTER BUTTON: Uses ?mode=register to open correct view */}
+             <Link href="/login?mode=register" className="hidden md:flex">
                <motion.button 
                  whileHover={{ scale: 1.05, backgroundColor: "#2563eb", boxShadow: "0 0 40px rgba(37, 99, 235, 0.4)" }}
                  whileTap={{ scale: 0.95 }}
@@ -181,7 +181,8 @@ export default function Navbar() {
               <Link href="/login" onClick={() => setIsMobileOpen(false)} className="w-full py-4 border border-white/10 text-center text-[11px] font-bold text-white uppercase tracking-[0.3em] active:bg-white/5 transition-all rounded-sm">
                 Log In
               </Link>
-              <Link href="/signup" onClick={() => setIsMobileOpen(false)} className="w-full py-4 bg-blue-600 text-center text-[11px] font-bold text-white uppercase tracking-[0.3em] active:bg-[#1d4ed8] rounded-sm transition-all shadow-[0_0_30px_rgba(37,99,235,0.3)] border border-blue-400/30">
+              {/* MOBILE REGISTER BUTTON: Uses ?mode=register */}
+              <Link href="/login?mode=register" onClick={() => setIsMobileOpen(false)} className="w-full py-4 bg-blue-600 text-center text-[11px] font-bold text-white uppercase tracking-[0.3em] active:bg-[#1d4ed8] rounded-sm transition-all shadow-[0_0_30px_rgba(37,99,235,0.3)] border border-blue-400/30">
                 Registration
               </Link>
             </div>

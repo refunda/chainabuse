@@ -15,7 +15,7 @@ const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-// --- 1. GOD-LEVEL ORBITAL RADAR SCANNER ---
+// --- 1. GOD-LEVEL ORBITAL RADAR SCANNER (PRO MOBILE UPGRADE) ---
 const RecoveryScanner = ({ onComplete }: any) => {
     const [progress, setProgress] = useState(0);
     const [phase, setPhase] = useState("INITIALIZING UPLINK");
@@ -83,84 +83,87 @@ const RecoveryScanner = ({ onComplete }: any) => {
     }, [activeNodes]);
 
     return (
-        <div className="h-[80vh] min-h-[600px] bg-[#02050a] rounded-2xl md:rounded-[24px] flex flex-col items-center justify-center relative overflow-hidden border border-cyan-900/50 shadow-[0_0_50px_rgba(0,0,0,0.8),inset_0_0_30px_rgba(6,182,212,0.05)]">
+        <div className="h-[85vh] min-h-[550px] md:min-h-[650px] bg-[#020408] rounded-2xl md:rounded-[24px] flex flex-col p-4 md:p-8 relative overflow-hidden border border-cyan-900/50 shadow-[0_0_50px_rgba(0,0,0,0.8),inset_0_0_50px_rgba(6,182,212,0.05)]">
             
-            <div className="relative z-20 flex flex-col w-full h-full p-4 md:p-8">
+            {/* CYBER RADAR VISUALIZER */}
+            <div className="flex-1 relative w-full border border-cyan-900/40 bg-[#010204] rounded-2xl overflow-hidden mb-4 shadow-[inset_0_0_80px_rgba(6,182,212,0.1)] flex items-center justify-center group">
                 
-                {/* CYBER RADAR VISUALIZER */}
-                <div className="flex-1 relative w-full border border-cyan-900/50 bg-[#010308] rounded-2xl overflow-hidden mb-6 shadow-[inset_0_0_80px_rgba(6,182,212,0.15)] flex items-center justify-center">
-                    
-                    {/* Background Grid */}
-                    <div className="absolute inset-0 bg-[linear-gradient(rgba(6,182,212,0.1)_1px,transparent_1px),linear-gradient(90deg,rgba(6,182,212,0.1)_1px,transparent_1px)] bg-[size:40px_40px] opacity-30" />
-                    
-                    {/* Concentric Radar Rings */}
-                    <div className="absolute w-[120%] aspect-square md:h-[90%] md:w-auto rounded-full border border-cyan-900/40 shadow-[inset_0_0_50px_rgba(6,182,212,0.05)]" />
-                    <div className="absolute w-[80%] aspect-square md:h-[60%] md:w-auto rounded-full border border-cyan-500/20 border-dashed animate-[spin_60s_linear_infinite_reverse]" />
-                    <div className="absolute w-[40%] aspect-square md:h-[30%] md:w-auto rounded-full border border-cyan-400/30 bg-cyan-500/5" />
+                {/* CRT Scanline Overlay */}
+                <div className="absolute inset-0 pointer-events-none bg-[linear-gradient(rgba(255,255,255,0),rgba(6,182,212,0.05)_50%,rgba(255,255,255,0))] bg-[length:100%_4px] opacity-50" />
+                <div className="absolute inset-0 bg-[linear-gradient(rgba(6,182,212,0.15)_1px,transparent_1px),linear-gradient(90deg,rgba(6,182,212,0.15)_1px,transparent_1px)] bg-[size:30px_30px] opacity-20" />
+                
+                {/* Responsive Concentric Radar Rings */}
+                <div className="absolute w-[140%] max-w-[800px] aspect-square rounded-full border border-cyan-900/30" />
+                <div className="absolute w-[100%] max-w-[600px] aspect-square rounded-full border border-cyan-500/20 border-dashed animate-[spin_40s_linear_infinite_reverse]" />
+                <div className="absolute w-[60%] max-w-[400px] aspect-square rounded-full border border-cyan-400/20 bg-cyan-500/5 shadow-[0_0_60px_rgba(6,182,212,0.15)]" />
+                <div className="absolute w-[20%] max-w-[150px] aspect-square rounded-full bg-cyan-400/10 border border-cyan-300/40 animate-pulse shadow-[0_0_30px_rgba(6,182,212,0.3)]" />
 
-                    {/* Center Crosshairs */}
-                    <div className="absolute w-full h-[1px] bg-cyan-500/20" />
-                    <div className="absolute h-full w-[1px] bg-cyan-500/20" />
+                {/* Center Crosshairs */}
+                <div className="absolute w-full h-[1px] bg-gradient-to-r from-transparent via-cyan-500/40 to-transparent" />
+                <div className="absolute h-full w-[1px] bg-gradient-to-b from-transparent via-cyan-500/40 to-transparent" />
 
-                    {/* Huge Globe Watermark */}
-                    <Globe className="absolute text-cyan-800/30 w-[90%] h-[90%] md:w-[70%] md:h-[70%] stroke-[0.5] pointer-events-none" />
+                {/* Huge Globe Watermark */}
+                <Globe className="absolute text-cyan-900/30 w-[90%] max-w-[500px] aspect-square stroke-[0.5] pointer-events-none" />
 
-                    {/* Orbital Sweep */}
-                    <motion.div 
-                        animate={{ rotate: 360 }} 
-                        transition={{ repeat: Infinity, duration: 4, ease: "linear" }} 
-                        className="absolute w-[150%] aspect-square md:w-[100%] md:h-full rounded-full bg-[conic-gradient(from_0deg,transparent_270deg,rgba(6,182,212,0.2)_360deg)] border-t-2 border-cyan-400 origin-center"
-                    />
+                {/* Orbital Sweep */}
+                <motion.div 
+                    animate={{ rotate: 360 }} 
+                    transition={{ repeat: Infinity, duration: 3.5, ease: "linear" }} 
+                    className="absolute w-[150%] max-w-[900px] aspect-square rounded-full bg-[conic-gradient(from_0deg,transparent_270deg,rgba(6,182,212,0.25)_360deg)] border-t-2 border-cyan-300 origin-center mix-blend-screen"
+                />
 
-                    {/* Glowing Coordinate Nodes */}
-                    {mapNodes.map((node) => (
-                        <div key={node.id} className="absolute" style={{ top: node.top, left: node.left }}>
-                            <AnimatePresence>
-                                {activeNodes.includes(node.id) ? (
-                                    <motion.div initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="relative flex flex-col items-center justify-center">
-                                        <motion.div animate={{ scale: [1, 2.5], opacity: [0.8, 0] }} transition={{ repeat: Infinity, duration: 1.2 }} className="absolute w-6 h-6 border border-emerald-400 rounded-full" />
-                                        <div className="w-3 h-3 bg-emerald-400 rounded-full shadow-[0_0_15px_#34d399]" />
-                                        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="absolute top-4 whitespace-nowrap bg-slate-950/90 border border-emerald-900/50 px-2 py-1 rounded text-[9px] md:text-[10px] font-mono font-bold text-cyan-400 tracking-widest shadow-lg z-10">
-                                            {node.label} <span className="text-emerald-400 ml-1">[{node.status}]</span>
-                                        </motion.div>
-                                    </motion.div>
-                                ) : (
-                                    <div className="w-1.5 h-1.5 bg-cyan-500/50 rounded-full shadow-[0_0_5px_rgba(6,182,212,0.5)] animate-pulse" />
-                                )}
-                            </AnimatePresence>
-                        </div>
-                    ))}
-                </div>
-
-                {/* TERMINAL & PROGRESS */}
-                <div className="w-full shrink-0">
-                    <div className="flex justify-between items-end mb-2 font-mono text-[10px] md:text-xs font-bold uppercase tracking-widest text-cyan-400 drop-shadow-[0_0_5px_rgba(6,182,212,0.5)]">
-                        <span className="truncate pr-4 flex items-center gap-2"><Activity size={14} className="animate-pulse text-emerald-400"/> {phase}</span>
-                        <span className="text-emerald-400 drop-shadow-[0_0_5px_rgba(52,211,153,0.5)]">{progress.toFixed(1)}%</span>
-                    </div>
-                    
-                    <div className="h-2 w-full bg-slate-900 rounded-full overflow-hidden border border-slate-800 mb-4 shadow-inner relative">
-                        <div className="absolute inset-0 bg-[linear-gradient(90deg,transparent_0%,rgba(255,255,255,0.2)_50%,transparent_100%)] w-1/2 animate-[shimmer_2s_infinite]" />
-                        <motion.div initial={{ width: 0 }} animate={{ width: `${progress}%` }} className="h-full bg-gradient-to-r from-cyan-600 via-cyan-400 to-white shadow-[0_0_15px_rgba(6,182,212,0.8)]" />
-                    </div>
-                    
-                    <div className="h-[140px] w-full bg-[#050810] border border-cyan-900/40 rounded-xl p-4 overflow-hidden shadow-[inset_0_0_20px_rgba(0,0,0,0.8)] flex flex-col justify-end relative">
-                        <div className="absolute top-0 left-0 w-full h-8 bg-gradient-to-b from-[#050810] to-transparent z-10" />
+                {/* Glowing Coordinate Nodes */}
+                {mapNodes.map((node) => (
+                    <div key={node.id} className="absolute" style={{ top: node.top, left: node.left }}>
                         <AnimatePresence>
-                            {logs.map((log, i) => (
-                                <motion.div key={i} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} className={`font-mono text-[10px] md:text-xs tracking-widest mb-1.5 ${i === 0 ? 'text-cyan-300 drop-shadow-[0_0_2px_rgba(6,182,212,0.8)]' : 'text-slate-600'}`}>
-                                    {log}
+                            {activeNodes.includes(node.id) ? (
+                                <motion.div initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="relative flex flex-col items-center justify-center">
+                                    <motion.div animate={{ scale: [1, 2.5], opacity: [0.8, 0] }} transition={{ repeat: Infinity, duration: 1.2 }} className="absolute w-6 h-6 border border-emerald-400 rounded-full" />
+                                    <div className="w-3 h-3 bg-emerald-400 rounded-full shadow-[0_0_15px_#34d399]" />
+                                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="absolute top-4 whitespace-nowrap bg-slate-950/90 border border-emerald-900/50 px-2 py-1 rounded text-[9px] md:text-[10px] font-mono font-bold text-cyan-300 tracking-widest shadow-lg z-10 backdrop-blur-md">
+                                        {node.label} <span className="text-emerald-400 ml-1">[{node.status}]</span>
+                                    </motion.div>
                                 </motion.div>
-                            ))}
+                            ) : (
+                                <div className="w-1.5 h-1.5 bg-cyan-700/50 rounded-full shadow-[0_0_5px_rgba(6,182,212,0.3)] animate-pulse" />
+                            )}
                         </AnimatePresence>
                     </div>
+                ))}
+            </div>
+
+            {/* TERMINAL & PROGRESS */}
+            <div className="w-full shrink-0">
+                <div className="flex justify-between items-end mb-2 font-mono text-[10px] md:text-xs font-bold uppercase tracking-widest text-cyan-400 drop-shadow-[0_0_5px_rgba(6,182,212,0.5)]">
+                    <span className="truncate pr-4 flex items-center gap-2"><Activity size={14} className="animate-pulse text-emerald-400"/> {phase}</span>
+                    <span className="text-emerald-400 drop-shadow-[0_0_5px_rgba(52,211,153,0.5)]">{progress.toFixed(1)}%</span>
+                </div>
+                
+                {/* Pro Hardware Segmented Progress Bar */}
+                <div className="h-3 md:h-4 w-full bg-[#010204] rounded p-0.5 border border-cyan-900/50 mb-3 shadow-[inset_0_0_10px_rgba(0,0,0,1)] relative flex gap-0.5">
+                    <motion.div initial={{ width: 0 }} animate={{ width: `${progress}%` }} className="h-full bg-gradient-to-r from-cyan-600 via-cyan-400 to-white shadow-[0_0_15px_rgba(6,182,212,0.8)] rounded-sm relative overflow-hidden">
+                        <div className="absolute inset-0 bg-[linear-gradient(45deg,transparent_25%,rgba(255,255,255,0.3)_50%,transparent_75%,transparent_100%)] bg-[length:20px_20px] animate-[shimmer_1s_linear_infinite]" />
+                    </motion.div>
+                </div>
+                
+                {/* Pro Terminal Logs */}
+                <div className="h-[120px] md:h-[150px] w-full bg-[#010204] border border-cyan-900/40 rounded-xl p-4 overflow-hidden shadow-[inset_0_0_30px_rgba(0,0,0,0.9)] flex flex-col justify-end relative">
+                    <div className="absolute top-0 left-0 w-full h-12 bg-gradient-to-b from-[#010204] to-transparent z-10" />
+                    <AnimatePresence>
+                        {logs.map((log, i) => (
+                            <motion.div key={i} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} className={`font-mono text-[9px] md:text-[11px] tracking-widest mb-1.5 ${i === 0 ? 'text-cyan-300 drop-shadow-[0_0_4px_rgba(6,182,212,0.8)] font-bold' : 'text-slate-600'}`}>
+                                {i === 0 && <span className="animate-pulse mr-1">_</span>}
+                                {log}
+                            </motion.div>
+                        ))}
+                    </AnimatePresence>
                 </div>
             </div>
         </div>
     );
 };
 
-// --- 2. GOD-LEVEL TACTICAL DISTRIBUTION ENGINE ---
+// --- 2. GOD-LEVEL TACTICAL DISTRIBUTION ENGINE (PRO MOBILE UPGRADE) ---
 const DistributionEngine = ({ onFinish }: any) => {
     const [hexCode, setHexCode] = useState("0x00000000");
 
@@ -177,7 +180,7 @@ const DistributionEngine = ({ onFinish }: any) => {
     }, []);
 
     return (
-        <div className="h-[75vh] min-h-[550px] bg-[#02050a] rounded-2xl md:rounded-[24px] flex flex-col items-center justify-center relative overflow-hidden border border-cyan-900/50 shadow-[0_0_50px_rgba(0,0,0,0.8)]">
+        <div className="h-[80vh] min-h-[550px] bg-[#02050a] rounded-2xl md:rounded-[24px] flex flex-col items-center justify-center relative overflow-hidden border border-cyan-900/50 shadow-[0_0_50px_rgba(0,0,0,0.8)]">
             
             {/* Background Grid */}
             <div className="absolute inset-0 bg-[linear-gradient(rgba(34,211,238,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(34,211,238,0.03)_1px,transparent_1px)] bg-[size:30px_30px]" />
@@ -185,7 +188,7 @@ const DistributionEngine = ({ onFinish }: any) => {
             <div className="relative z-10 w-full px-4 md:px-12 flex flex-col items-center">
                 
                 {/* 3-PART MIGRATION UI */}
-                <div className="flex flex-col md:flex-row items-center justify-between w-full max-w-3xl mb-16">
+                <div className="flex flex-col md:flex-row items-center justify-between w-full max-w-3xl mb-8 md:mb-16">
                     
                     {/* Source: Offshore Ledger */}
                     <div className="text-center flex flex-col items-center relative z-20">
@@ -209,7 +212,7 @@ const DistributionEngine = ({ onFinish }: any) => {
                                 key={i} 
                                 animate={{ left: ["0%", "100%"], opacity: [0, 1, 1, 0] }} 
                                 transition={{ repeat: Infinity, duration: 1.5, delay: i * 0.3, ease: "linear" }} 
-                                className="absolute w-6 h-1 bg-cyan-400 rounded-full shadow-[0_0_15px_#22d3ee] top-1/2 -translate-y-1/2" 
+                                className="absolute w-8 h-1 bg-cyan-400 rounded-full shadow-[0_0_15px_#22d3ee] top-1/2 -translate-y-1/2" 
                             />
                         ))}
                         {[1, 2].map((i) => (
@@ -222,15 +225,17 @@ const DistributionEngine = ({ onFinish }: any) => {
                         ))}
                     </div>
 
-                    {/* The Data Tunnel (Mobile Vertical) */}
-                    <div className="md:hidden w-32 h-24 relative flex items-center justify-center my-4">
+                    {/* The Data Tunnel (Mobile Vertical - Upgraded) */}
+                    <div className="md:hidden w-32 h-32 relative flex items-center justify-center my-4 overflow-hidden">
                         <div className="absolute h-full w-[2px] bg-slate-800" />
-                        {[1, 2, 3].map((i) => (
+                        <div className="absolute h-full w-[1px] bg-cyan-900/50 left-[40%]" />
+                        <div className="absolute h-full w-[1px] bg-cyan-900/50 right-[40%]" />
+                        {[1, 2, 3, 4].map((i) => (
                             <motion.div 
                                 key={`m-${i}`} 
                                 animate={{ top: ["0%", "100%"], opacity: [0, 1, 1, 0] }} 
-                                transition={{ repeat: Infinity, duration: 1.5, delay: i * 0.5, ease: "linear" }} 
-                                className="absolute w-1 h-6 bg-cyan-400 rounded-full shadow-[0_0_15px_#22d3ee] left-1/2 -translate-x-1/2" 
+                                transition={{ repeat: Infinity, duration: 1.2, delay: i * 0.4, ease: "linear" }} 
+                                className="absolute w-1 h-8 bg-cyan-400 rounded-full shadow-[0_0_15px_#22d3ee] left-1/2 -translate-x-1/2" 
                             />
                         ))}
                     </div>
@@ -249,7 +254,7 @@ const DistributionEngine = ({ onFinish }: any) => {
                 </div>
                 
                 {/* Execution Console */}
-                <div className="w-full max-w-xl bg-slate-950 border border-slate-800 rounded-xl p-4 md:p-6 shadow-2xl relative overflow-hidden">
+                <div className="w-full max-w-xl bg-[#010204] border border-slate-800 rounded-xl p-4 md:p-6 shadow-2xl relative overflow-hidden">
                     <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-cyan-500 via-emerald-400 to-cyan-500 animate-[shimmer_2s_infinite]" />
                     <h2 className="text-sm md:text-base font-black font-mono text-white mb-4 uppercase tracking-widest flex items-center gap-2">
                         <Terminal size={16} className="text-cyan-500" /> Executing Smart Contract

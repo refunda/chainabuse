@@ -16,7 +16,7 @@ const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-// --- CRYPTO TICKER COMPONENT ---
+// --- CRYPTO TICKER COMPONENT (PRO MOBILE UPGRADE) ---
 const CryptoTicker = () => {
     const [displayData, setDisplayData] = useState<any[]>(ASSET_LIST);
     const latestDataMap = useRef<Map<string, any>>(new Map());
@@ -72,7 +72,7 @@ const CryptoTicker = () => {
     useEffect(() => {
         const timer = setInterval(() => {
             setCurrentIndex((prev) => (prev + 1) % totalPages);
-        }, 4000); 
+        }, 5000); // Slightly longer for better readability
         return () => clearInterval(timer);
     }, [totalPages]);
 
@@ -90,22 +90,23 @@ const CryptoTicker = () => {
             <AnimatePresence mode="wait">
                 <motion.div
                     key={currentIndex}
-                    initial={{ y: 20, opacity: 0 }}
-                    animate={{ y: 0, opacity: 1 }}
-                    exit={{ y: -20, opacity: 0 }}
-                    transition={{ duration: 0.4, ease: "easeInOut" }}
-                    className="flex w-full items-center justify-around md:justify-between gap-2"
+                    initial={{ x: 20, opacity: 0 }}
+                    animate={{ x: 0, opacity: 1 }}
+                    exit={{ x: -20, opacity: 0 }}
+                    transition={{ duration: 0.3, ease: "easeInOut" }}
+                    className="flex w-full items-center justify-center gap-2"
                 >
                     {currentBatch.map((coin, i) => (
-                        <div key={`${coin.s}-${i}`} className="flex items-center gap-1.5 md:gap-4 bg-slate-900/50 px-2 md:px-3 py-1.5 rounded-lg border border-slate-700/50 shrink-0 overflow-hidden min-w-0">
-                            <div className="flex items-center gap-1 md:gap-2 shrink-0">
-                                <img src={coin.l} className="w-4 h-4 md:w-6 md:h-6 rounded-full border border-slate-700 shrink-0" alt={coin.s} />
-                                <span className="font-bold text-slate-200 text-[11px] md:text-[14px] truncate max-w-[40px] md:max-w-none">{coin.s}</span>
+                        // THE FIX: Used flex-1 so items evenly share space on mobile
+                        <div key={`${coin.s}-${i}`} className="flex-1 flex items-center justify-between gap-1 md:gap-4 bg-slate-900/50 px-2 md:px-3 py-1.5 rounded-lg border border-slate-700/50 overflow-hidden min-w-0 max-w-sm transition-colors">
+                            <div className="flex items-center gap-1.5 md:gap-2 shrink-0">
+                                <img src={coin.l} className="w-4 h-4 md:w-5 md:h-5 rounded-full border border-slate-700 shrink-0" alt={coin.s} />
+                                <span className="font-bold text-slate-200 text-[10px] md:text-[12px] truncate hidden sm:inline-block">{coin.s}</span>
                             </div>
-                            <span className="text-cyan-400 font-mono text-[11px] md:text-[14px] font-bold truncate drop-shadow-[0_0_5px_rgba(6,182,212,0.3)]">
+                            <span className="text-cyan-400 font-mono text-[10px] md:text-[13px] font-bold truncate drop-shadow-[0_0_5px_rgba(6,182,212,0.3)]">
                                 ${formatPrice(coin.p)}
                             </span>
-                            <span className="text-[9px] md:text-[12px] font-mono font-bold flex items-center gap-0.5 md:gap-1 shrink-0" style={{ color: (coin.c || 0) >= 0 ? THEME.success : THEME.danger }}>
+                            <span className="text-[9px] md:text-[11px] font-mono font-bold flex items-center gap-0.5 shrink-0" style={{ color: (coin.c || 0) >= 0 ? THEME.success : THEME.danger }}>
                                 {(coin.c || 0) >= 0 ? <TrendingUp size={10} className="md:w-3 md:h-3"/> : <TrendingDown size={10} className="md:w-3 md:h-3"/>}
                                 {Math.abs(coin.c || 0).toFixed(2)}%
                             </span>

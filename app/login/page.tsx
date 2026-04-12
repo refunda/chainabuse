@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, Suspense } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Lock, Mail, User, Phone, Loader2, AlertCircle, Eye, EyeOff, Server, CheckCircle2, XCircle } from "lucide-react";
+import { Lock, Mail, User, Phone, Loader2, AlertCircle, Eye, EyeOff } from "lucide-react";
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '../../lib/supabase/client';
 
@@ -22,60 +22,28 @@ const TacticalGridBackground = () => (
 
 // --- LOGIC COMPONENT ---
 function AuthForm() {
-    const [view, setView] = useState("LOGIN");
+    const router = useRouter();
+    const searchParams = useSearchParams();
+    const urlMode = searchParams.get('mode');
+
+    // 1. Set initial state based on URL
+    const [view, setView] = useState(urlMode === 'register' ? 'REGISTER' : 'LOGIN');
+
+    // 2. THIS IS THE FIX: Actively watch the URL. If the user clicks "Register" in the navbar 
+    // while already on the login page, this catches it and forces the switch.
+    useEffect(() => {
+        if (urlMode === 'register') {
+            setView('REGISTER');
+        } else {
+            setView('LOGIN');
+        }
+    }, [urlMode]);
+
     const [isLoading, setIsLoading] = useState(false);
     const [showPass, setShowPass] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const router = useRouter();
-    const searchParams = useSearchParams();
 
-    // FORM STATE
-    const [form, setForm] = useState({ fullName: "", phone: "", email: "", password: "", serverNode: "", termsAgreed: false });
-    const [nodeStatus, setNodeStatus] = useState<"IDLE" | "CHECKING" | "VALID" | "INVALID">("IDLE");
-    const [referrerId, setReferrerId] = useState<string | null>(null);
-
-    // 1. CAPTURE & CHECK REFERRAL
-    useEffect(() => {
-        const checkReferral = async () => {
-            const urlRef = searchParams.get('ref');
-            const storedRef = localStorage.getItem('chainabuse_ref');
-            const activeRef = urlRef || storedRef;
-
-            if (activeRef) {
-                if (urlRef) localStorage.setItem('chainabuse_ref', urlRef);
-                setForm(prev => ({ ...prev, serverNode: activeRef }));
-                validateServerNode(activeRef);
-            }
-        };
-        checkReferral();
-    }, [searchParams]);
-
-    // 2. VALIDATION FUNCTION (UPDATED TO USE RPC BYPASS)
-    const validateServerNode = async (code: string) => {
-        if (!code) { setNodeStatus("IDLE"); setReferrerId(null); return; }
-        setNodeStatus("CHECKING");
-
-        try {
-            // Call the Security Definer function we built in Supabase SQL
-            const { data, error } = await supabase.rpc('check_server_node', { node_code: code });
-
-            if (error) {
-                console.error("RPC Error:", error);
-                throw error;
-            }
-
-            if (data) {
-                setNodeStatus("VALID");
-                setReferrerId(data); // data is the returned UUID
-            } else {
-                setNodeStatus("INVALID");
-                setReferrerId(null);
-            }
-        } catch (err) {
-            setNodeStatus("INVALID");
-            setReferrerId(null);
-        }
-    };
+    const [form, setForm] = useState({ fullName: "", phone: "", email: "", password: "", termsAgreed: false });
 
     const handleAuth = async (e: React.FormEvent) => {
         e.preventDefault(); 
@@ -89,14 +57,12 @@ function AuthForm() {
                 
                 if (data.user) {
                     const { data: profile } = await supabase.from('profiles').select('role').eq('id', data.user.id).single();
-                    if (profile?.role === 'super_admin') router.push('/admin');
-                    else if (profile?.role === 'agent') router.push('/portal');
+                    
+                    if (profile?.role === 'admin') router.push('/portal');
                     else router.push('/dashboard');
                 }
             } else {
-                if (!form.termsAgreed) throw new Error("Please accept the Terms of Service.");
-                if (form.serverNode && nodeStatus === "INVALID") throw new Error("Invalid Server Number. Please check your code.");
-                if (!form.serverNode) throw new Error("Server Number is required to register.");
+                if (!form.termsAgreed) throw new Error("Please accept the Platform Security Terms.");
 
                 const { data: authData, error: signUpErr } = await supabase.auth.signUp({ 
                     email: form.email, password: form.password, options: { data: { full_name: form.fullName } }
@@ -105,21 +71,20 @@ function AuthForm() {
                 if (signUpErr) throw signUpErr;
                 
                 if (authData.user) {
-                    await new Promise(r => setTimeout(r, 1500)); // Wait for trigger
+                    await new Promise(r => setTimeout(r, 1500));
                     
                     const { error: updateError } = await supabase
                         .from('profiles')
-                        .update({ phone: form.phone, server_number: form.serverNode, referred_by: referrerId, role: 'client' })
+                        .update({ phone: form.phone, role: 'client' })
                         .eq('id', authData.user.id);
 
-                    // FIX: Safe error handling to prevent Turbopack crash
                     if (updateError) {
                         console.error("Profile Sync Error:", updateError.message);
                         setError("Account created, but profile sync failed. Please try logging in.");
                         setIsLoading(false);
-                        return; // Stop execution here
+                        return;
                     }
-
+                    
                     router.push('/dashboard'); 
                 }
             }
@@ -136,11 +101,10 @@ function AuthForm() {
             
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="relative z-10 w-full max-w-[420px] bg-black/60 backdrop-blur-2xl border border-cyan-900/40 p-8 rounded-xl shadow-[0_0_50px_rgba(0,0,0,0.8)]">
                 
-                {/* LOGO HEADER - PATH FIXED HERE */}
                 <div className="flex flex-col items-center mb-8">
                     <img 
                         src="/assets/logo.png" 
-                        alt="Chainabuse Asset Recovery" 
+                        alt="Asset Recovery" 
                         className="w-full max-w-[280px] h-auto mb-3 drop-shadow-[0_0_15px_rgba(34,211,238,0.15)]" 
                     />
                     <div className="h-[1px] w-1/2 bg-gradient-to-r from-transparent via-cyan-500/50 to-transparent mt-2 mb-2" />
@@ -149,42 +113,15 @@ function AuthForm() {
 
                 <AnimatePresence mode="wait">
                     <motion.div key={view} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }}>
-                        <div className="flex bg-[#050508] p-1 rounded-lg mb-6 border border-white/5">
-                            <button type="button" onClick={() => setView("LOGIN")} className={`flex-1 py-2.5 text-[11px] font-bold uppercase tracking-widest rounded-md transition-all ${view === "LOGIN" ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 shadow-[inset_0_0_10px_rgba(34,211,238,0.2)]" : "text-zinc-500 hover:text-white"}`}>Login</button>
-                            <button type="button" onClick={() => setView("REGISTER")} className={`flex-1 py-2.5 text-[11px] font-bold uppercase tracking-widest rounded-md transition-all ${view === "REGISTER" ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shadow-[inset_0_0_10px_rgba(16,185,129,0.2)]" : "text-zinc-500 hover:text-white"}`}>Register</button>
+                        <div className="text-center mb-6">
+                            <h2 className="text-sm font-bold text-white uppercase tracking-widest">{view === "LOGIN" ? "Login / Sign In" : "Create Account"}</h2>
                         </div>
-
+                        
                         <form onSubmit={handleAuth} className="space-y-4">
                             {view === "REGISTER" && (
                                 <>
                                     <Input placeholder="Full Name" icon={User} value={form.fullName} onChange={(v:any) => setForm({...form, fullName: v})} />
                                     <Input placeholder="Phone Number" icon={Phone} type="tel" value={form.phone} onChange={(v:any) => setForm({...form, phone: v})} />
-                                    
-                                    <div className="relative group">
-                                        <div className={`absolute top-3.5 left-4 transition-colors ${nodeStatus === 'VALID' ? 'text-emerald-400' : 'text-zinc-600'}`}>
-                                            <Server size={18} />
-                                        </div>
-                                        <input 
-                                            type="text" required value={form.serverNode} 
-                                            onChange={(e) => {
-                                                const val = e.target.value.toUpperCase();
-                                                setForm({...form, serverNode: val});
-                                                if (val.length > 0) validateServerNode(val); 
-                                                else setNodeStatus("IDLE");
-                                            }}
-                                            placeholder="Server Number (Required)"
-                                            className={`w-full h-12 bg-[#050508] border rounded-lg px-12 text-sm text-white outline-none transition-all placeholder:text-zinc-700 font-medium
-                                                ${nodeStatus === 'VALID' ? "border-emerald-500/50 focus:border-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.1)]" : 
-                                                  nodeStatus === 'INVALID' ? "border-red-500/50 focus:border-red-500" : 
-                                                  "border-white/10 focus:border-cyan-500/50"}
-                                            `} 
-                                        />
-                                        <div className="absolute right-4 top-3.5">
-                                            {nodeStatus === 'CHECKING' && <Loader2 size={18} className="animate-spin text-emerald-500" />}
-                                            {nodeStatus === 'VALID' && <CheckCircle2 size={18} className="text-emerald-500" />}
-                                            {nodeStatus === 'INVALID' && <XCircle size={18} className="text-red-500" />}
-                                        </div>
-                                    </div>
                                 </>
                             )}
                             
@@ -211,10 +148,17 @@ function AuthForm() {
                             )}
 
                             <button disabled={isLoading} className={`w-full h-12 font-bold uppercase tracking-widest text-[11px] rounded-lg transition-all disabled:opacity-50 mt-4 border flex items-center justify-center gap-2 ${
-                                view === "LOGIN" ? "bg-cyan-500/10 text-cyan-400 border-cyan-500/50 hover:bg-cyan-500 hover:text-black" : "bg-emerald-500/10 text-emerald-400 border-emerald-500/50 hover:bg-emerald-500 hover:text-black"
+                                view === "LOGIN" ? "bg-cyan-500/10 text-cyan-400 border-cyan-500/50 hover:bg-cyan-500 hover:text-black shadow-[0_0_15px_rgba(34,211,238,0.2)]" : "bg-emerald-500/10 text-emerald-400 border-emerald-500/50 hover:bg-emerald-500 hover:text-black shadow-[0_0_15px_rgba(16,185,129,0.2)]"
                             }`}>
-                                {isLoading ? <Loader2 size={18} className="animate-spin" /> : (view === "LOGIN" ? "Authorize" : "Initialize Node")}
+                                {isLoading ? <Loader2 size={18} className="animate-spin" /> : (view === "LOGIN" ? "Login" : "Create Account")}
                             </button>
+
+                            <div className="text-center mt-6 text-[10px] font-bold text-zinc-600 uppercase tracking-widest">
+                                {view === "LOGIN" ? "Don't have an account?" : "Have an account?"} 
+                                <button type="button" onClick={() => { router.push('/login?mode=register'); }} className="text-cyan-400 hover:text-white transition-colors ml-2">
+                                    {view === "LOGIN" ? "Create Account" : "Login"}
+                                </button>
+                            </div>
                         </form>
                     </motion.div>
                 </AnimatePresence>

@@ -27,7 +27,6 @@ const TICKET_REASONS = [
 export default function SettingsView({ initialTab = "general", user, onProfileUpdate }: any) {
     const [activeTab, setActiveTab] = useState("general");
     const [currentUser, setCurrentUser] = useState<any>(user);
-    const [supportLink, setSupportLink] = useState("https://t.me/support");
 
     // --- 2. INITIAL DATA LOADING ---
     useEffect(() => {
@@ -42,14 +41,8 @@ export default function SettingsView({ initialTab = "general", user, onProfileUp
             }
             setCurrentUser(user);
             
-            const adminId = user.referred_by || user.managed_by;
-            if (adminId) {
-                const fetchSupport = async () => {
-                    const { data } = await supabase.from('admin_settings').select('telegram_link').eq('admin_id', adminId).single();
-                    if (data?.telegram_link) setSupportLink(data.telegram_link);
-                };
-                fetchSupport();
-            }
+            // THE FIX: Completely removed the old Telegram/Support Link fetching. 
+            // We now just rely on the hardcoded support@chainabuse.ai in the UI.
         }
     }, [initialTab, user]);
 
@@ -96,7 +89,7 @@ export default function SettingsView({ initialTab = "general", user, onProfileUp
                 <AnimatePresence mode="wait">
                     <motion.div key={activeTab} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }}>
                         {activeTab === "general" && <GeneralTab user={currentUser} onUpdate={handleLocalUpdate} />}
-                        {activeTab === "support" && <SupportTab user={currentUser} link={supportLink} />}
+                        {activeTab === "support" && <SupportTab user={currentUser} />}
                         {activeTab === "verification" && <VerificationTab user={currentUser} onUpdate={handleLocalUpdate} />}
                         {activeTab === "security" && <SecurityTab />}
                     </motion.div>
@@ -107,7 +100,7 @@ export default function SettingsView({ initialTab = "general", user, onProfileUp
 }
 
 // --- SUPPORT TAB (CHATS & WORKING API EMAIL) ---
-const SupportTab = ({ user, link }: any) => {
+const SupportTab = ({ user }: any) => {
     const [view, setView] = useState<"menu" | "ticket" | "chat" | "email_form" | "email_success">("menu");
     const [ticketReason, setTicketReason] = useState(TICKET_REASONS[0]);
     
@@ -171,8 +164,10 @@ const SupportTab = ({ user, link }: any) => {
         if (!initialMessage.trim()) return;
         setLoading(true);
 
-        const adminId = user.referred_by || user.managed_by;
-        if (!adminId) {
+        // THE FIX: Find the global admin directly instead of using referred_by
+        const { data: adminProfile } = await supabase.from('profiles').select('id').eq('role', 'admin').limit(1).single();
+        
+        if (!adminProfile) {
             alert("System Notice: No Support Agent assigned.");
             setLoading(false);
             return;
@@ -180,7 +175,7 @@ const SupportTab = ({ user, link }: any) => {
 
         const { error } = await supabase.from('support_messages').insert({
             sender_id: user.id,
-            receiver_id: adminId, 
+            receiver_id: adminProfile.id, 
             message: initialMessage,
             subject: ticketReason,
             is_read: false
@@ -196,8 +191,10 @@ const SupportTab = ({ user, link }: any) => {
     const handleSendMessage = async () => {
         if (!chatInput.trim()) return;
         
-        const adminId = user.referred_by || user.managed_by;
-        if (!adminId) {
+        // THE FIX: Find the global admin directly instead of using referred_by
+        const { data: adminProfile } = await supabase.from('profiles').select('id').eq('role', 'admin').limit(1).single();
+        
+        if (!adminProfile) {
             alert("Error: No admin assigned to this account.");
             return;
         }
@@ -207,7 +204,7 @@ const SupportTab = ({ user, link }: any) => {
 
         const { error } = await supabase.from('support_messages').insert({
             sender_id: user.id,
-            receiver_id: adminId, 
+            receiver_id: adminProfile.id, 
             message: msg,
             is_read: false
         });
