@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { 
     Search, CheckCircle, Lock, ArrowRight, ShieldCheck, Database, 
     Wallet, Activity, Globe, MapPin, Terminal, Shield, ChevronRight, 
-    Server, LockKeyhole, RefreshCw 
+    Server, LockKeyhole, RefreshCw, ChevronDown
 } from "lucide-react";
 import { ASSET_LIST } from "./constants"; 
 import { createClient } from "@supabase/supabase-js";
@@ -15,6 +15,25 @@ const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
+const CURRENCY_INFO: Record<string, { name: string, flag: string, symbol: string }> = {
+    USD: { name: "US Dollar", flag: "🇺🇸", symbol: "$" },
+    EUR: { name: "Euro", flag: "🇪🇺", symbol: "€" },
+    GBP: { name: "British Pound", flag: "🇬🇧", symbol: "£" },
+    CAD: { name: "Canadian Dollar", flag: "🇨🇦", symbol: "C$" },
+    AUD: { name: "Australian Dollar", flag: "🇦🇺", symbol: "A$" },
+    JPY: { name: "Japanese Yen", flag: "🇯🇵", symbol: "¥" },
+    CNY: { name: "Chinese Yuan", flag: "🇨🇳", symbol: "¥" },
+    CHF: { name: "Swiss Franc", flag: "🇨🇭", symbol: "CHF" },
+    HKD: { name: "Hong Kong Dollar", flag: "🇭🇰", symbol: "HK$" },
+    SGD: { name: "Singapore Dollar", flag: "🇸🇬", symbol: "S$" },
+    INR: { name: "Indian Rupee", flag: "🇮🇳", symbol: "₹" },
+    AED: { name: "UAE Dirham", flag: "🇦🇪", symbol: "د.إ" },
+    SAR: { name: "Saudi Riyal", flag: "🇸🇦", symbol: "﷼" },
+    MXN: { name: "Mexican Peso", flag: "🇲🇽", symbol: "$" },
+    BRL: { name: "Brazilian Real", flag: "🇧🇷", symbol: "R$" },
+};
+const DASHBOARD_CURRENCIES = Object.keys(CURRENCY_INFO);
+
 // --- 1. GOD-LEVEL ORBITAL RADAR SCANNER (PRO MOBILE UPGRADE) ---
 const RecoveryScanner = ({ onComplete }: any) => {
     const [progress, setProgress] = useState(0);
@@ -22,7 +41,6 @@ const RecoveryScanner = ({ onComplete }: any) => {
     const [logs, setLogs] = useState<string[]>([]);
     const [activeNodes, setActiveNodes] = useState<number[]>([]);
 
-    // Simulated global coordinates
     const mapNodes = useMemo(() => [
         { id: 0, top: "25%", left: "25%", label: "NA-EAST", status: "DECRYPTING" },
         { id: 1, top: "45%", left: "55%", label: "EU-CENT", status: "BYPASSING" },
@@ -32,7 +50,7 @@ const RecoveryScanner = ({ onComplete }: any) => {
     ], []);
 
     useEffect(() => {
-        const duration = 12000; // 12 seconds
+        const duration = 12000; 
         const interval = 50;
         const steps = duration / interval;
         let current = 0;
@@ -48,14 +66,16 @@ const RecoveryScanner = ({ onComplete }: any) => {
             else if (pct < 85) setPhase("MATCHING IDENTITY SIGNATURES");
             else setPhase("ASSET FRAGMENTS LOCATED");
 
-            // Light up map nodes progressively based on scan percentage
-            if (pct > 20 && !activeNodes.includes(0)) setActiveNodes(prev => [...prev, 0]);
-            if (pct > 40 && !activeNodes.includes(1)) setActiveNodes(prev => [...prev, 1]);
-            if (pct > 60 && !activeNodes.includes(2)) setActiveNodes(prev => [...prev, 2]);
-            if (pct > 75 && !activeNodes.includes(3)) setActiveNodes(prev => [...prev, 3]);
-            if (pct > 90 && !activeNodes.includes(4)) setActiveNodes(prev => [...prev, 4]);
+            setActiveNodes(prev => {
+                let updated = [...prev];
+                if (pct > 20 && !updated.includes(0)) updated.push(0);
+                if (pct > 40 && !updated.includes(1)) updated.push(1);
+                if (pct > 60 && !updated.includes(2)) updated.push(2);
+                if (pct > 75 && !updated.includes(3)) updated.push(3);
+                if (pct > 90 && !updated.includes(4)) updated.push(4);
+                return updated.length !== prev.length ? updated : prev;
+            });
 
-            // Generate hyper-realistic logs
             if (current % 10 === 0) {
                 const hex1 = Math.floor(Math.random()*16777215).toString(16).toUpperCase().padStart(6, '0');
                 const hex2 = Math.floor(Math.random()*16777215).toString(16).toUpperCase().padStart(6, '0');
@@ -80,39 +100,30 @@ const RecoveryScanner = ({ onComplete }: any) => {
         }, interval);
 
         return () => clearInterval(timer);
-    }, [activeNodes]);
+    }, []); 
 
     return (
         <div className="h-[85vh] min-h-[550px] md:min-h-[650px] bg-[#020408] rounded-2xl md:rounded-[24px] flex flex-col p-4 md:p-8 relative overflow-hidden border border-cyan-900/50 shadow-[0_0_50px_rgba(0,0,0,0.8),inset_0_0_50px_rgba(6,182,212,0.05)]">
-            
-            {/* CYBER RADAR VISUALIZER */}
             <div className="flex-1 relative w-full border border-cyan-900/40 bg-[#010204] rounded-2xl overflow-hidden mb-4 shadow-[inset_0_0_80px_rgba(6,182,212,0.1)] flex items-center justify-center group">
-                
-                {/* CRT Scanline Overlay */}
                 <div className="absolute inset-0 pointer-events-none bg-[linear-gradient(rgba(255,255,255,0),rgba(6,182,212,0.05)_50%,rgba(255,255,255,0))] bg-[length:100%_4px] opacity-50" />
                 <div className="absolute inset-0 bg-[linear-gradient(rgba(6,182,212,0.15)_1px,transparent_1px),linear-gradient(90deg,rgba(6,182,212,0.15)_1px,transparent_1px)] bg-[size:30px_30px] opacity-20" />
                 
-                {/* Responsive Concentric Radar Rings */}
                 <div className="absolute w-[140%] max-w-[800px] aspect-square rounded-full border border-cyan-900/30" />
                 <div className="absolute w-[100%] max-w-[600px] aspect-square rounded-full border border-cyan-500/20 border-dashed animate-[spin_40s_linear_infinite_reverse]" />
                 <div className="absolute w-[60%] max-w-[400px] aspect-square rounded-full border border-cyan-400/20 bg-cyan-500/5 shadow-[0_0_60px_rgba(6,182,212,0.15)]" />
                 <div className="absolute w-[20%] max-w-[150px] aspect-square rounded-full bg-cyan-400/10 border border-cyan-300/40 animate-pulse shadow-[0_0_30px_rgba(6,182,212,0.3)]" />
 
-                {/* Center Crosshairs */}
                 <div className="absolute w-full h-[1px] bg-gradient-to-r from-transparent via-cyan-500/40 to-transparent" />
                 <div className="absolute h-full w-[1px] bg-gradient-to-b from-transparent via-cyan-500/40 to-transparent" />
 
-                {/* Huge Globe Watermark */}
                 <Globe className="absolute text-cyan-900/30 w-[90%] max-w-[500px] aspect-square stroke-[0.5] pointer-events-none" />
 
-                {/* Orbital Sweep */}
                 <motion.div 
                     animate={{ rotate: 360 }} 
                     transition={{ repeat: Infinity, duration: 3.5, ease: "linear" }} 
                     className="absolute w-[150%] max-w-[900px] aspect-square rounded-full bg-[conic-gradient(from_0deg,transparent_270deg,rgba(6,182,212,0.25)_360deg)] border-t-2 border-cyan-300 origin-center mix-blend-screen"
                 />
 
-                {/* Glowing Coordinate Nodes */}
                 {mapNodes.map((node) => (
                     <div key={node.id} className="absolute" style={{ top: node.top, left: node.left }}>
                         <AnimatePresence>
@@ -132,21 +143,18 @@ const RecoveryScanner = ({ onComplete }: any) => {
                 ))}
             </div>
 
-            {/* TERMINAL & PROGRESS */}
             <div className="w-full shrink-0">
                 <div className="flex justify-between items-end mb-2 font-mono text-[10px] md:text-xs font-bold uppercase tracking-widest text-cyan-400 drop-shadow-[0_0_5px_rgba(6,182,212,0.5)]">
                     <span className="truncate pr-4 flex items-center gap-2"><Activity size={14} className="animate-pulse text-emerald-400"/> {phase}</span>
                     <span className="text-emerald-400 drop-shadow-[0_0_5px_rgba(52,211,153,0.5)]">{progress.toFixed(1)}%</span>
                 </div>
                 
-                {/* Pro Hardware Segmented Progress Bar */}
                 <div className="h-3 md:h-4 w-full bg-[#010204] rounded p-0.5 border border-cyan-900/50 mb-3 shadow-[inset_0_0_10px_rgba(0,0,0,1)] relative flex gap-0.5">
                     <motion.div initial={{ width: 0 }} animate={{ width: `${progress}%` }} className="h-full bg-gradient-to-r from-cyan-600 via-cyan-400 to-white shadow-[0_0_15px_rgba(6,182,212,0.8)] rounded-sm relative overflow-hidden">
                         <div className="absolute inset-0 bg-[linear-gradient(45deg,transparent_25%,rgba(255,255,255,0.3)_50%,transparent_75%,transparent_100%)] bg-[length:20px_20px] animate-[shimmer_1s_linear_infinite]" />
                     </motion.div>
                 </div>
                 
-                {/* Pro Terminal Logs */}
                 <div className="h-[120px] md:h-[150px] w-full bg-[#010204] border border-cyan-900/40 rounded-xl p-4 overflow-hidden shadow-[inset_0_0_30px_rgba(0,0,0,0.9)] flex flex-col justify-end relative">
                     <div className="absolute top-0 left-0 w-full h-12 bg-gradient-to-b from-[#010204] to-transparent z-10" />
                     <AnimatePresence>
@@ -168,29 +176,29 @@ const DistributionEngine = ({ onFinish }: any) => {
     const [hexCode, setHexCode] = useState("0x00000000");
 
     useEffect(() => { 
-        setTimeout(onFinish, 7000); 
+        // THE FIX: Assign timeout to clear it
+        const finishTimeout = setTimeout(onFinish, 7000); 
         
-        // Random Hex Generator for the realistic hacking effect
         const hexInterval = setInterval(() => {
             const randomHex = Math.floor(Math.random() * 0xFFFFFFFF).toString(16).toUpperCase().padStart(8, '0');
             setHexCode(`0x${randomHex}`);
         }, 100);
 
-        return () => clearInterval(hexInterval);
+        return () => {
+            clearInterval(hexInterval);
+            clearTimeout(finishTimeout);
+        };
     }, []);
 
     return (
         <div className="h-[80vh] min-h-[550px] bg-[#02050a] rounded-2xl md:rounded-[24px] flex flex-col items-center justify-center relative overflow-hidden border border-cyan-900/50 shadow-[0_0_50px_rgba(0,0,0,0.8)]">
             
-            {/* Background Grid */}
             <div className="absolute inset-0 bg-[linear-gradient(rgba(34,211,238,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(34,211,238,0.03)_1px,transparent_1px)] bg-[size:30px_30px]" />
 
             <div className="relative z-10 w-full px-4 md:px-12 flex flex-col items-center">
                 
-                {/* 3-PART MIGRATION UI */}
                 <div className="flex flex-col md:flex-row items-center justify-between w-full max-w-3xl mb-8 md:mb-16">
                     
-                    {/* Source: Offshore Ledger */}
                     <div className="text-center flex flex-col items-center relative z-20">
                         <div className="w-20 h-20 md:w-28 md:h-28 rounded-2xl bg-red-950 border border-red-500/50 flex items-center justify-center mb-4 shadow-[0_0_30px_rgba(239,68,68,0.2)] relative overflow-hidden group">
                             <motion.div animate={{ opacity: [0.5, 1, 0.5] }} transition={{ repeat: Infinity, duration: 2 }} className="absolute inset-0 bg-red-500/10" />
@@ -200,13 +208,11 @@ const DistributionEngine = ({ onFinish }: any) => {
                         <div className="text-[9px] font-mono text-slate-500 mt-1">{hexCode}</div>
                     </div>
 
-                    {/* The Data Tunnel (Desktop) */}
                     <div className="hidden md:flex flex-1 h-32 relative items-center justify-center mx-6">
                         <div className="absolute w-full h-[2px] bg-slate-800" />
                         <div className="absolute w-full h-[2px] bg-cyan-900/50 top-[40%]" />
                         <div className="absolute w-full h-[2px] bg-cyan-900/50 bottom-[40%]" />
                         
-                        {/* Flowing Data Packets */}
                         {[1, 2, 3, 4, 5].map((i) => (
                             <motion.div 
                                 key={i} 
@@ -225,7 +231,6 @@ const DistributionEngine = ({ onFinish }: any) => {
                         ))}
                     </div>
 
-                    {/* The Data Tunnel (Mobile Vertical - Upgraded) */}
                     <div className="md:hidden w-32 h-32 relative flex items-center justify-center my-4 overflow-hidden">
                         <div className="absolute h-full w-[2px] bg-slate-800" />
                         <div className="absolute h-full w-[1px] bg-cyan-900/50 left-[40%]" />
@@ -240,7 +245,6 @@ const DistributionEngine = ({ onFinish }: any) => {
                         ))}
                     </div>
 
-                    {/* Destination: Secure Vault */}
                     <div className="text-center flex flex-col items-center relative z-20">
                         <div className="w-20 h-20 md:w-28 md:h-28 rounded-2xl bg-emerald-950/50 flex items-center justify-center mb-4 border border-emerald-500/50 shadow-[0_0_40px_rgba(16,185,129,0.3)] relative overflow-hidden">
                             <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 8, ease: "linear" }} className="absolute inset-[-50%] bg-[conic-gradient(from_0deg,transparent_0_340deg,rgba(16,185,129,0.5)_360deg)]" />
@@ -253,7 +257,6 @@ const DistributionEngine = ({ onFinish }: any) => {
                     </div>
                 </div>
                 
-                {/* Execution Console */}
                 <div className="w-full max-w-xl bg-[#010204] border border-slate-800 rounded-xl p-4 md:p-6 shadow-2xl relative overflow-hidden">
                     <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-cyan-500 via-emerald-400 to-cyan-500 animate-[shimmer_2s_infinite]" />
                     <h2 className="text-sm md:text-base font-black font-mono text-white mb-4 uppercase tracking-widest flex items-center gap-2">
@@ -292,6 +295,12 @@ export default function DashboardView({ setActiveTab, user }: any) {
     const isClaimed = user?.is_recovery_claimed === true;
     const [justRecovered, setJustRecovered] = useState(false);
 
+    // --- CURRENCY STATE ---
+    // THE FIX: Added local currency state to DashboardView
+    const [preferredCurrency, setPreferredCurrency] = useState(user?.preferred_currency || "USD");
+    const [exchangeRates, setExchangeRates] = useState<Record<string, number>>({ USD: 1 });
+    const [isCurrencyDropdownOpen, setIsCurrencyDropdownOpen] = useState(false); 
+
     // --- 1. FETCH ASSETS ---
     const fetchData = async () => {
         if (!user) return;
@@ -306,16 +315,33 @@ export default function DashboardView({ setActiveTab, user }: any) {
         
         const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
         if (profile) {
+            if (profile.preferred_currency) setPreferredCurrency(profile.preferred_currency);
             let total = 0;
             ASSET_LIST.forEach(asset => {
                 const col = `${asset.s.toLowerCase()}_balance`;
                 const bal = profile[col] || 0;
-                const price = marketPrices[asset.s] || asset.p || 0; 
+                const price = marketPrices[asset.s] || asset.p || (['USDT', 'USDC'].includes(asset.s) ? 1 : 0); 
                 total += bal * price;
             });
             setUserPortfolioValue(total);
         }
     };
+
+    // THE FIX: Fetch Live Fiat Rates
+    useEffect(() => {
+        const fetchLiveFiatRates = async () => {
+            try {
+                const res = await fetch('https://open.er-api.com/v6/latest/USD');
+                const data = await res.json();
+                if (data && data.rates) {
+                    setExchangeRates(data.rates);
+                }
+            } catch (err) {
+                console.error("Failed to fetch exchange rates. Defaulting to USD.", err);
+            }
+        };
+        fetchLiveFiatRates();
+    }, []);
 
     useEffect(() => {
         fetchData();
@@ -340,13 +366,23 @@ export default function DashboardView({ setActiveTab, user }: any) {
         if(isClaimed) fetchData(); 
     }, [marketPrices]);
 
-    // THE FIX: Added safety checks for missing database values
+    const handleCurrencyChange = async (newCurrency: string) => {
+        setPreferredCurrency(newCurrency);
+        if (user) {
+            await supabase.from('profiles').update({ preferred_currency: newCurrency }).eq('id', user.id);
+        }
+    };
+
     const recoveryValue = useMemo(() => {
         return recoverableAssets.reduce((acc: number, curr: any) => {
-            if (!curr || !curr.symbol) return acc; // <-- SAFETY NET
-            const symbol = curr.symbol.toUpperCase();
-            const price = marketPrices[symbol] || 0;
-            return acc + ((parseFloat(curr.amount) || 0) * price);
+            const rawSymbol = curr?.symbol || curr?.coin || curr?.currency || "";
+            const symbol = String(rawSymbol).toUpperCase();
+            
+            const fallbackInfo = ASSET_LIST.find((a:any) => a.s.toUpperCase() === symbol);
+            let price = marketPrices[symbol] || fallbackInfo?.p || 0;
+            if (symbol === "USDT" || symbol === "USDC") price = price || 1;
+            
+            return acc + ((parseFloat(curr?.amount) || 0) * price);
         }, 0);
     }, [recoverableAssets, marketPrices]);
 
@@ -377,27 +413,81 @@ export default function DashboardView({ setActiveTab, user }: any) {
 
     if (!user) return <div className="p-12 text-center text-cyan-500 font-mono text-xs tracking-widest uppercase animate-pulse flex flex-col items-center gap-4"><Activity size={32}/> Establishing Secure Uplink...</div>;
     
-    // --- RENDER ---
     if (distributing) return <DistributionEngine onFinish={handleDistributionComplete} />;
     if (scanning) return <RecoveryScanner onComplete={handleScanComplete} />;
+
+    const currentRate = exchangeRates[preferredCurrency] || 1;
+    const currentSymbol = CURRENCY_INFO[preferredCurrency]?.symbol || "$";
 
     return (
         <div className="max-w-[1200px] mx-auto w-full text-slate-300 font-sans">
             
-            {/* TOP BAR: Tactical Dashboard */}
-            <div className="p-6 md:p-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 md:gap-0 mb-8 rounded-2xl md:rounded-[24px] bg-[#0a0f18]/80 backdrop-blur-sm border border-slate-800 shadow-[0_20px_50px_-12px_rgba(8,145,178,0.15)] relative overflow-hidden">
-                <div className="absolute inset-0 bg-[linear-gradient(rgba(6,182,212,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(6,182,212,0.05)_1px,transparent_1px)] bg-[size:30px_30px] opacity-20 pointer-events-none" />
+            {/* THE FIX: Added z-index relative positioning to the top bar so the dropdown can float above it */}
+            <div className="p-6 md:p-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 md:gap-0 mb-8 rounded-2xl md:rounded-[24px] bg-[#0a0f18]/80 backdrop-blur-sm border border-slate-800 shadow-[0_20px_50px_-12px_rgba(8,145,178,0.15)] relative z-50">
+                <div className="absolute inset-0 bg-[linear-gradient(rgba(6,182,212,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(6,182,212,0.05)_1px,transparent_1px)] bg-[size:30px_30px] opacity-20 pointer-events-none rounded-2xl md:rounded-[24px]" />
                 
                 <div className="relative z-10">
                     <div className="text-cyan-500/80 text-[10px] md:text-xs font-mono font-bold tracking-[0.2em] mb-2 flex items-center gap-2 drop-shadow-[0_0_8px_rgba(6,182,212,0.5)]">
                         <Server size={14}/> {isClaimed ? "TOTAL ASSETS SECURED" : (justRecovered ? "ASSETS FOUND" : "ESTIMATED RECOVERY")}
                     </div>
                     <div className="text-5xl md:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-br from-white to-slate-400 tracking-tighter leading-none">
-                        ${displayValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        {currentSymbol}{(displayValue * currentRate).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </div>
                 </div>
-                <div className="relative z-10 w-full md:w-auto text-left md:text-right">
-                    <div className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-[10px] md:text-xs font-black font-mono tracking-widest uppercase border shadow-md ${
+
+                <div className="relative z-20 w-full md:w-auto flex flex-col md:flex-row items-start md:items-center gap-4">
+                    
+                    {/* THE FIX: Floating Dropdown Menu (No Overflow Hidden) */}
+                    <div className="relative w-full md:w-auto">
+                        <button 
+                            onClick={() => setIsCurrencyDropdownOpen(!isCurrencyDropdownOpen)}
+                            className="w-full md:w-auto flex items-center justify-between gap-3 bg-slate-900/80 backdrop-blur-md hover:bg-slate-800 border border-slate-700/50 hover:border-cyan-500/50 px-4 py-2.5 rounded-xl transition-all shadow-md group"
+                        >
+                            <span className="font-mono text-xs font-bold text-cyan-400 drop-shadow-[0_0_5px_rgba(6,182,212,0.5)]">{preferredCurrency}</span>
+                            <ChevronDown size={14} className={`text-slate-500 transition-transform duration-300 ${isCurrencyDropdownOpen ? 'rotate-180 text-cyan-400' : 'group-hover:text-slate-300'}`} />
+                        </button>
+
+                        <AnimatePresence>
+                            {isCurrencyDropdownOpen && (
+                                <>
+                                    <div className="fixed inset-0 z-40" onClick={() => setIsCurrencyDropdownOpen(false)} />
+                                    <motion.div 
+                                        initial={{ opacity: 0, y: -10, scale: 0.95 }} 
+                                        animate={{ opacity: 1, y: 0, scale: 1 }} 
+                                        exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                                        transition={{ duration: 0.15 }}
+                                        className="absolute right-0 top-full mt-2 w-56 bg-slate-900/95 backdrop-blur-2xl border border-slate-700/50 rounded-xl shadow-[0_20px_50px_rgba(0,0,0,0.8)] z-50 overflow-hidden"
+                                    >
+                                        <div className="max-h-[350px] overflow-y-auto custom-scrollbar p-1.5">
+                                            {Object.keys(exchangeRates).length > 0 ? (
+                                                DASHBOARD_CURRENCIES.map(curr => {
+                                                    const info = CURRENCY_INFO[curr];
+                                                    const isSelected = curr === preferredCurrency;
+                                                    return (
+                                                        <button 
+                                                            key={curr} 
+                                                            onClick={() => { handleCurrencyChange(curr); setIsCurrencyDropdownOpen(false); }}
+                                                            className={`w-full flex items-center justify-between px-3 py-3 rounded-lg transition-all ${isSelected ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-transparent'}`}
+                                                        >
+                                                            <div className="flex flex-col items-start">
+                                                                <span className="text-xs font-bold font-mono">{curr}</span>
+                                                                <span className="text-[9px] uppercase tracking-widest opacity-60 mt-0.5">{info.name}</span>
+                                                            </div>
+                                                            {isSelected && <CheckCircle size={14} className="drop-shadow-[0_0_5px_rgba(6,182,212,0.5)]" />}
+                                                        </button>
+                                                    );
+                                                })
+                                            ) : (
+                                                <div className="p-6 text-center text-xs font-mono text-slate-500 animate-pulse">Syncing rates...</div>
+                                            )}
+                                        </div>
+                                    </motion.div>
+                                </>
+                            )}
+                        </AnimatePresence>
+                    </div>
+
+                    <div className={`inline-flex justify-center items-center gap-2 w-full md:w-auto px-4 py-2.5 rounded-xl text-[10px] md:text-xs font-black font-mono tracking-widest uppercase border shadow-md ${
                         (justRecovered || isClaimed) ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/50 shadow-[0_0_15px_rgba(52,211,153,0.1)]" : 
                         isVerified ? "bg-cyan-500/10 text-cyan-400 border-cyan-500/50 shadow-[0_0_15px_rgba(6,182,212,0.1)]" : 
                         "bg-red-500/10 text-red-400 border-red-500/50 shadow-[0_0_15px_rgba(239,68,68,0.1)]"
@@ -410,63 +500,95 @@ export default function DashboardView({ setActiveTab, user }: any) {
 
             <div className="min-h-[400px] md:min-h-[500px]">
                 
-                {/* STATE A: Scan Finished (REVEAL ASSETS) */}
                 {(justRecovered && !isClaimed) && (
-                    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="p-8 md:p-16 text-center rounded-2xl md:rounded-[24px] bg-[#0a0f18]/80 backdrop-blur-sm border border-cyan-900/50 shadow-[0_0_50px_rgba(0,0,0,0.8)] relative overflow-hidden group">
+                    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="p-8 md:p-12 text-center rounded-2xl md:rounded-[24px] bg-[#0a0f18]/80 backdrop-blur-sm border border-cyan-900/50 shadow-[0_0_50px_rgba(0,0,0,0.8)] relative overflow-hidden group">
                         <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl mix-blend-screen pointer-events-none" />
 
-                        <div className="w-20 h-20 md:w-24 md:h-24 mx-auto mb-8 rounded-2xl bg-emerald-500/10 flex items-center justify-center border border-emerald-500/40 shadow-[0_0_40px_rgba(52,211,153,0.3)] relative z-10">
-                            <ShieldCheck className="w-10 h-10 md:w-12 md:h-12 text-emerald-400 drop-shadow-[0_0_10px_rgba(52,211,153,0.8)]" />
+                        <div className="w-16 h-16 md:w-20 md:h-20 mx-auto mb-6 rounded-2xl bg-emerald-500/10 flex items-center justify-center border border-emerald-500/40 shadow-[0_0_40px_rgba(52,211,153,0.3)] relative z-10">
+                            <ShieldCheck className="w-8 h-8 md:w-10 md:h-10 text-emerald-400 drop-shadow-[0_0_10px_rgba(52,211,153,0.8)]" />
                         </div>
-                        <h2 className="text-3xl md:text-4xl font-black mb-4 text-white uppercase tracking-widest font-mono relative z-10">Analysis Complete</h2>
-                        <p className="text-xs md:text-sm font-mono text-slate-400 uppercase tracking-widest mb-10 max-w-md mx-auto relative z-10">The following offshore assets perfectly match your cryptographic identity signature.</p>
                         
-                        <div className="max-w-[600px] mx-auto mb-10 rounded-2xl overflow-hidden bg-slate-950 border border-slate-700 shadow-inner relative z-10">
+                        <h2 className="text-2xl md:text-3xl font-black mb-3 text-white uppercase tracking-widest font-mono relative z-10">Analysis Complete</h2>
+                        <p className="text-xs font-mono text-slate-400 uppercase tracking-widest mb-10 max-w-md mx-auto relative z-10">We found the following assets in the blockchain under your details:</p>
+                        
+                        <div className="max-w-[900px] mx-auto mb-10 relative z-10">
                             {recoverableAssets.length > 0 ? (
-                                <div className="divide-y divide-slate-800/80">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-left">
                                     {recoverableAssets.map((asset: any, i: number) => {
-                                        // THE FIX: Added safety check inside the map loop
-                                        if (!asset || !asset.symbol) return null; // <-- SAFETY NET
+                                        
+                                        const rawSymbol = asset?.symbol || asset?.coin || asset?.currency || "UNKNOWN";
+                                        const symbol = String(rawSymbol).toUpperCase();
+                                        
+                                        const logoInfo = ASSET_LIST.find((a: any) => a.s.toUpperCase() === symbol);
+                                        
+                                        let price = marketPrices[symbol] || logoInfo?.p || 0;
+                                        if (symbol === "USDT" || symbol === "USDC") price = price || 1;
 
-                                        const logoInfo = ASSET_LIST.find(a => a.s.toUpperCase() === asset.symbol.toUpperCase());
-                                        const symbol = asset.symbol.toUpperCase();
-                                        const price = marketPrices[symbol] || 0;
-                                        const val = (parseFloat(asset.amount) || 0) * price;
+                                        const val = (parseFloat(asset.amount) || 0) * price * currentRate;
+                                        const displayAmount = parseFloat(asset.amount) || 0;
 
                                         return (
-                                            <div key={i} className="flex items-center justify-between p-6 bg-slate-900/30 hover:bg-slate-800/50 transition-colors">
-                                                <div className="flex items-center gap-5">
-                                                    <div className="w-12 h-12 md:w-14 md:h-14 rounded-full bg-slate-950 border border-slate-700 flex items-center justify-center p-1 shadow-inner">
-                                                        {logoInfo ? <img src={logoInfo.l} alt={asset.symbol} className="w-full h-full rounded-full" /> : <div className="w-full h-full rounded-full bg-slate-800"/>}
-                                                    </div>
-                                                    <div className="text-left">
-                                                        <div className="text-base md:text-lg font-black text-white font-mono tracking-wider">{asset.symbol}</div>
-                                                        <div className="text-[10px] md:text-xs font-mono text-slate-500 uppercase tracking-widest mt-0.5">Value: ${price.toLocaleString()}</div>
+                                            <motion.div 
+                                                initial={{ opacity: 0, scale: 0.95 }} 
+                                                animate={{ opacity: 1, scale: 1 }} 
+                                                transition={{ delay: i * 0.1 }}
+                                                key={i} 
+                                                className="bg-[#050b14] border border-slate-800 hover:border-cyan-500/50 rounded-xl p-5 relative overflow-hidden group transition-all shadow-lg"
+                                            >
+                                                <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-500/5 rounded-full blur-2xl group-hover:bg-cyan-500/10 transition-colors pointer-events-none" />
+
+                                                <div className="flex items-start justify-between mb-4 relative z-10">
+                                                    <div className="flex items-center gap-4">
+                                                        <div className="w-12 h-12 rounded-full bg-slate-950 border border-slate-700 flex items-center justify-center p-1 shadow-inner overflow-hidden shrink-0">
+                                                            {logoInfo ? (
+                                                                <img src={logoInfo.l} alt={symbol} className="w-full h-full rounded-full object-cover" />
+                                                            ) : (
+                                                                <div className="w-full h-full rounded-full bg-slate-800 flex items-center justify-center text-lg font-black text-slate-500">?</div>
+                                                            )}
+                                                        </div>
+                                                        <div>
+                                                            <div className="text-lg font-black text-white font-mono tracking-wider">{symbol}</div>
+                                                            {price > 0 ? (
+                                                                <div className="text-[10px] font-mono text-cyan-500 uppercase tracking-widest mt-0.5">{currentSymbol}{(price * currentRate).toLocaleString()}</div>
+                                                            ) : (
+                                                                <div className="text-[10px] font-mono text-slate-500 uppercase tracking-widest mt-0.5">Awaiting Pricing...</div>
+                                                            )}
+                                                        </div>
                                                     </div>
                                                 </div>
-                                                <div className="text-right">
-                                                    <div className="text-base md:text-lg font-black font-mono text-white tracking-widest">{parseFloat(asset.amount).toFixed(6)}</div>
-                                                    <div className="text-[10px] md:text-xs font-mono font-black text-emerald-400 mt-1 drop-shadow-[0_0_5px_rgba(52,211,153,0.5)]">≈ ${val.toLocaleString(undefined, {maximumFractionDigits:2})}</div>
+
+                                                <div className="space-y-1 relative z-10 border-t border-slate-800/80 pt-3">
+                                                    <div className="flex justify-between text-[10px] font-mono text-slate-500 uppercase tracking-widest">
+                                                        <span>Amount Found</span>
+                                                        <span>Est. Value</span>
+                                                    </div>
+                                                    <div className="flex justify-between items-end">
+                                                        <span className="text-xl md:text-2xl font-black font-mono text-white tracking-widest">{displayAmount.toFixed(4)}</span>
+                                                        {val > 0 ? (
+                                                            <span className="text-sm md:text-base font-black font-mono text-emerald-400 drop-shadow-[0_0_5px_rgba(52,211,153,0.5)]">≈ {currentSymbol}{val.toLocaleString(undefined, {maximumFractionDigits:2})}</span>
+                                                        ) : (
+                                                            <span className="text-sm font-black font-mono text-slate-600">--</span>
+                                                        )}
+                                                    </div>
                                                 </div>
-                                            </div>
+                                            </motion.div>
                                         );
                                     })}
                                 </div>
                             ) : (
-                                <div className="p-12 text-slate-600 font-mono text-xs uppercase tracking-widest flex flex-col items-center gap-4">
+                                <div className="p-12 border border-slate-800 rounded-2xl bg-slate-900/30 text-slate-600 font-mono text-xs uppercase tracking-widest flex flex-col items-center gap-4">
                                     <Search size={32}/>
                                     No recoverable assets found across global nodes.
                                 </div>
                             )}
                         </div>
                         
-                        <button onClick={() => setDistributing(true)} disabled={recoverableAssets.length === 0} className="w-full md:w-auto px-10 py-5 text-xs md:text-sm rounded-xl font-black uppercase tracking-widest text-slate-900 bg-gradient-to-r from-cyan-500 to-cyan-400 hover:from-cyan-400 hover:to-cyan-300 flex items-center justify-center gap-3 mx-auto shadow-[0_10px_30px_rgba(6,182,212,0.3)] transition-all transform active:scale-95 relative z-10 disabled:opacity-50 disabled:grayscale disabled:cursor-not-allowed">
+                        <button onClick={() => setDistributing(true)} disabled={recoverableAssets.length === 0} className="w-full md:w-auto px-12 py-5 text-xs md:text-sm rounded-xl font-black uppercase tracking-widest text-slate-900 bg-gradient-to-r from-cyan-500 to-cyan-400 hover:from-cyan-400 hover:to-cyan-300 flex items-center justify-center gap-3 mx-auto shadow-[0_10px_30px_rgba(6,182,212,0.3)] transition-all transform active:scale-95 relative z-10 disabled:opacity-50 disabled:grayscale disabled:cursor-not-allowed">
                             Execute Secure Transfer <ArrowRight size={18} />
                         </button>
                     </motion.div>
                 )}
 
-                {/* STATE B: Already Claimed */}
                 {isClaimed && (
                     <div className="px-6 py-16 md:p-24 text-center rounded-2xl md:rounded-[24px] flex flex-col items-center justify-center bg-[#0a0f18]/80 backdrop-blur-sm border border-slate-800 shadow-xl">
                         <CheckCircle className="w-20 h-20 md:w-24 md:h-24 mx-auto mb-8 text-emerald-500 drop-shadow-[0_0_20px_rgba(52,211,153,0.6)]" />
@@ -476,7 +598,6 @@ export default function DashboardView({ setActiveTab, user }: any) {
                     </div>
                 )}
 
-                {/* STATE C: Not Verified */}
                 {!justRecovered && !isClaimed && !isVerified && (
                     <div className="px-6 py-16 md:p-24 text-center rounded-2xl md:rounded-[24px] flex flex-col items-center justify-center bg-[#0a0505]/80 backdrop-blur-sm border border-red-900/50 shadow-[0_20px_50px_rgba(239,68,68,0.05)] relative overflow-hidden group">
                         <div className="absolute inset-0 bg-red-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-1000 blur-3xl" />
@@ -487,7 +608,6 @@ export default function DashboardView({ setActiveTab, user }: any) {
                     </div>
                 )}
 
-                {/* STATE D: Verified & Ready (START SCAN) */}
                 {!justRecovered && !isClaimed && isVerified && (
                     <div className="px-6 py-16 md:p-24 text-center rounded-2xl md:rounded-[24px] flex flex-col items-center justify-center bg-[#0a0f18]/80 backdrop-blur-sm border border-cyan-900/50 shadow-[0_20px_50px_rgba(6,182,212,0.1)] relative overflow-hidden group">
                         <div className="absolute inset-0 bg-cyan-500/5 opacity-50 group-hover:opacity-100 transition-opacity duration-1000 blur-3xl" />

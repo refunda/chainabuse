@@ -55,7 +55,8 @@ const AccordionSection = ({
     id, title, icon: Icon, colorClass, children, 
     openSection, setOpenSection, refreshing, isLocked, handleRefreshRecovery 
 }: any) => (
-    <div className={`bg-[#0a0f18] border border-cyan-900/30 md:border-none md:bg-transparent rounded-xl md:rounded-none overflow-hidden mb-3 md:mb-8 transition-colors ${openSection === id ? 'border-cyan-500/50 shadow-[0_0_15px_rgba(6,182,212,0.1)]' : ''}`}>
+    // THE FIX: Removed 'overflow-hidden' which was clipping the dropdown menu
+    <div className={`bg-[#0a0f18] border border-cyan-900/30 md:border-none md:bg-transparent rounded-xl md:rounded-none mb-3 md:mb-8 transition-colors ${openSection === id ? 'border-cyan-500/50 shadow-[0_0_15px_rgba(6,182,212,0.1)]' : ''}`}>
         <button 
             type="button" 
             onClick={() => setOpenSection(openSection === id ? "" : id)}
@@ -84,22 +85,21 @@ const AccordionSection = ({
             )}
         </div>
 
-        <div className={`grid transition-all duration-300 ease-in-out ${openSection === id ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0 md:grid-rows-[1fr] md:opacity-100'}`}>
-            <div className="overflow-hidden">
-                <div className="p-4 pt-0 md:p-0 border-t border-cyan-900/30 md:border-none">
-                    {id === 'recovery' && handleRefreshRecovery && (
-                        <button 
-                            type="button"
-                            onClick={handleRefreshRecovery} disabled={refreshing || isLocked}
-                            className={`md:hidden w-full mb-4 bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 px-3 py-2.5 rounded-xl text-[11px] font-bold uppercase tracking-wider flex justify-center items-center gap-2 transition ${isLocked ? 'opacity-50 cursor-not-allowed grayscale' : 'active:bg-cyan-500/20'}`}
-                        >
-                            {isLocked ? <Lock size={14}/> : (refreshing ? <Loader2 size={14} className="animate-spin"/> : <RefreshCw size={14} />)}
-                            {isLocked ? 'Locked' : 'Refresh Data'}
-                        </button>
-                    )}
-                    <div className="bg-[#050810] rounded-xl md:border border-cyan-900/30 md:p-5 shadow-[inset_0_0_20px_rgba(0,0,0,0.5)]">
-                        {children}
-                    </div>
+        {/* THE FIX: Replaced grid animation with standard visible/hidden to prevent clipping */}
+        <div className={`transition-all duration-300 ease-in-out ${openSection === id ? 'block' : 'hidden md:block'}`}>
+            <div className="p-4 pt-0 md:p-0 border-t border-cyan-900/30 md:border-none">
+                {id === 'recovery' && handleRefreshRecovery && (
+                    <button 
+                        type="button"
+                        onClick={handleRefreshRecovery} disabled={refreshing || isLocked}
+                        className={`md:hidden w-full mb-4 bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 px-3 py-2.5 rounded-xl text-[11px] font-bold uppercase tracking-wider flex justify-center items-center gap-2 transition ${isLocked ? 'opacity-50 cursor-not-allowed grayscale' : 'active:bg-cyan-500/20'}`}
+                    >
+                        {isLocked ? <Lock size={14}/> : (refreshing ? <Loader2 size={14} className="animate-spin"/> : <RefreshCw size={14} />)}
+                        {isLocked ? 'Locked' : 'Refresh Data'}
+                    </button>
+                )}
+                <div className="bg-[#050810] rounded-xl md:border border-cyan-900/30 md:p-5 shadow-[inset_0_0_20px_rgba(0,0,0,0.5)]">
+                    {children}
                 </div>
             </div>
         </div>
@@ -142,7 +142,6 @@ export default function ClientManager({
         return () => { document.body.style.overflow = 'unset'; };
     }, [selectedClient]);
 
-    // THE FIX: Removed the console.error and throw error so Next.js doesn't crash.
     const fetchRecoveryBalances = async (userId: string) => {
         try {
             const { data, error } = await supabase.from('recovery_allocations').select('coin, amount').eq('user_id', userId);
@@ -151,9 +150,7 @@ export default function ClientManager({
                 data.forEach((r: any) => recMap[r.coin] = r.amount);
                 setLocalRecoveryForm(recMap);
             }
-        } catch (err) {
-            // Silently catch to prevent Next.js red screen
-        }
+        } catch (err) {}
     };
 
     const fetchKycDocuments = async (userId: string) => {
@@ -166,9 +163,8 @@ export default function ClientManager({
             } else {
                 setKycDocs([]);
             }
-        } catch (error) {
-            // Silently catch
-        } finally {
+        } catch (error) {} 
+        finally {
             setLoadingDocs(false);
         }
     };
@@ -180,8 +176,11 @@ export default function ClientManager({
         await supabase.from('profiles').update({ preferred_currency: preferredCurrency }).eq('id', selectedClient.id);
     };
 
+    // THE FIX: Hard lock to prevent double execution on rapid clicks
     const handleSaveAll = async (e: React.FormEvent) => {
         e.preventDefault(); 
+        if (localSaving || saving || isLocked) return; // <-- Hard Lock
+        
         setLocalSaving(true);
 
         try {
@@ -193,9 +192,7 @@ export default function ClientManager({
             if (recoveryUpserts.length > 0) {
                 await supabase.from('recovery_allocations').upsert(recoveryUpserts, { onConflict: 'user_id, coin' });
             }
-        } catch (err) {
-            // Silently catch
-        }
+        } catch (err) {}
 
         await Promise.all([
             saveDepositOverrides(),
@@ -208,7 +205,7 @@ export default function ClientManager({
     };
 
     const executeKycAndClose = async (status: string) => {
-        if (isLocked) return;
+        if (isLocked || localSaving) return;
         setLocalSaving(true);
         await handleKycUpdate(status);
         setLocalSaving(false);
@@ -222,9 +219,8 @@ export default function ClientManager({
         try {
             await supabase.from('profiles').update({ is_recovery_claimed: false }).eq('id', selectedClient.id);
             setSelectedClient(null); 
-        } catch (error: any) {
-            // Silently catch
-        } finally {
+        } catch (error: any) {} 
+        finally {
             setRefreshing(false);
         }
     };
@@ -335,13 +331,13 @@ export default function ClientManager({
                                     </div>
                                     
                                     <div className="grid grid-cols-3 gap-3 mb-6">
-                                        <button type="button" disabled={isLocked} onClick={() => executeKycAndClose('verified')} className={`p-4 rounded-xl border text-[11px] md:text-xs font-bold transition-all flex flex-col items-center justify-center gap-2 uppercase tracking-wider ${selectedClient.kyc_status === 'verified' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.2)]' : 'bg-[#0a0f18] border-cyan-900/50 hover:border-emerald-500 text-slate-400'} ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                                        <button type="button" disabled={isLocked || localSaving} onClick={() => executeKycAndClose('verified')} className={`p-4 rounded-xl border text-[11px] md:text-xs font-bold transition-all flex flex-col items-center justify-center gap-2 uppercase tracking-wider ${selectedClient.kyc_status === 'verified' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.2)]' : 'bg-[#0a0f18] border-cyan-900/50 hover:border-emerald-500 text-slate-400'} ${(isLocked || localSaving) ? 'opacity-50 cursor-not-allowed' : ''}`}>
                                             <ShieldCheck size={18}/> Approve
                                         </button>
-                                        <button type="button" disabled={isLocked} onClick={() => executeKycAndClose('pending')} className={`p-4 rounded-xl border text-[11px] md:text-xs font-bold transition-all flex flex-col items-center justify-center gap-2 uppercase tracking-wider ${selectedClient.kyc_status === 'pending' ? 'bg-orange-500/10 text-orange-400 border-orange-500/50 shadow-[0_0_15px_rgba(249,115,22,0.2)]' : 'bg-[#0a0f18] border-cyan-900/50 hover:border-orange-500 text-slate-400'} ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                                        <button type="button" disabled={isLocked || localSaving} onClick={() => executeKycAndClose('pending')} className={`p-4 rounded-xl border text-[11px] md:text-xs font-bold transition-all flex flex-col items-center justify-center gap-2 uppercase tracking-wider ${selectedClient.kyc_status === 'pending' ? 'bg-orange-500/10 text-orange-400 border-orange-500/50 shadow-[0_0_15px_rgba(249,115,22,0.2)]' : 'bg-[#0a0f18] border-cyan-900/50 hover:border-orange-500 text-slate-400'} ${(isLocked || localSaving) ? 'opacity-50 cursor-not-allowed' : ''}`}>
                                             <Loader2 size={18}/> Pending
                                         </button>
-                                        <button type="button" disabled={isLocked} onClick={() => executeKycAndClose('rejected')} className={`p-4 rounded-xl border text-[11px] md:text-xs font-bold transition-all flex flex-col items-center justify-center gap-2 uppercase tracking-wider ${selectedClient.kyc_status === 'rejected' ? 'bg-red-500/10 text-red-400 border-red-500/50 shadow-[0_0_15px_rgba(239,68,68,0.2)]' : 'bg-[#0a0f18] border-cyan-900/50 hover:border-red-500 text-slate-400'} ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                                        <button type="button" disabled={isLocked || localSaving} onClick={() => executeKycAndClose('rejected')} className={`p-4 rounded-xl border text-[11px] md:text-xs font-bold transition-all flex flex-col items-center justify-center gap-2 uppercase tracking-wider ${selectedClient.kyc_status === 'rejected' ? 'bg-red-500/10 text-red-400 border-red-500/50 shadow-[0_0_15px_rgba(239,68,68,0.2)]' : 'bg-[#0a0f18] border-cyan-900/50 hover:border-red-500 text-slate-400'} ${(isLocked || localSaving) ? 'opacity-50 cursor-not-allowed' : ''}`}>
                                             <Lock size={18}/> Reject
                                         </button>
                                     </div>
@@ -454,14 +450,19 @@ export default function ClientManager({
                                     </div>
                                 </AccordionSection>
 
-                                {/* 🟢 EXACT DISPLAY CURRENCY SELECT 🟢 */}
+                                {/* 🟢 THE FIX: CSS Absolute Position Override on Dropdown 🟢 */}
                                 <AccordionSection id="currency" title="Display Currency" icon={Globe} colorClass="text-indigo-400 bg-indigo-500/10 border-indigo-500/30" openSection={openSection} setOpenSection={setOpenSection}>
-                                    <div>
+                                    <div className="relative">
                                         <label className="text-[10px] md:text-[11px] font-bold text-indigo-400 mb-2 block uppercase tracking-wider">Dashboard Currency</label>
+                                        
                                         <div className="relative">
                                             <button 
                                                 type="button"
-                                                onClick={() => !isLocked && setIsCurrencyDropdownOpen(!isCurrencyDropdownOpen)}
+                                                onClick={(e) => { 
+                                                    e.preventDefault(); 
+                                                    e.stopPropagation(); 
+                                                    if(!isLocked) setIsCurrencyDropdownOpen(!isCurrencyDropdownOpen); 
+                                                }}
                                                 className={`w-full flex items-center justify-between bg-[#0a0f18] border border-cyan-900/50 p-4 rounded-xl transition-all shadow-md ${isLocked ? 'opacity-50 cursor-not-allowed' : 'hover:border-indigo-500 cursor-pointer'}`}
                                             >
                                                 <div className="flex flex-col items-start text-left">
@@ -473,16 +474,18 @@ export default function ClientManager({
                                                 <ChevronDown size={16} className={`text-slate-500 transition-transform duration-300 ${isCurrencyDropdownOpen ? 'rotate-180 text-indigo-400' : ''}`} />
                                             </button>
 
+                                            {/* THE FIX: Forced absolute positioning floating above document flow */}
                                             <AnimatePresence>
                                                 {isCurrencyDropdownOpen && (
                                                     <>
-                                                        <div className="fixed inset-0 z-40" onClick={() => setIsCurrencyDropdownOpen(false)} />
+                                                        <div className="fixed inset-0 z-[100]" onClick={() => setIsCurrencyDropdownOpen(false)} />
                                                         <motion.div 
                                                             initial={{ opacity: 0, y: -10, scale: 0.95 }} 
                                                             animate={{ opacity: 1, y: 0, scale: 1 }} 
                                                             exit={{ opacity: 0, y: -10, scale: 0.95 }}
                                                             transition={{ duration: 0.15 }}
-                                                            className="absolute left-0 right-0 top-full mt-2 bg-slate-900/95 backdrop-blur-2xl border border-slate-700/50 rounded-xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] z-50 overflow-hidden"
+                                                            style={{ position: 'absolute', zIndex: 9999, top: '100%', left: 0, right: 0 }}
+                                                            className="mt-2 bg-slate-900/95 backdrop-blur-2xl border border-slate-700/50 rounded-xl shadow-[0_20px_50px_rgba(0,0,0,0.8)] overflow-hidden"
                                                         >
                                                             <div className="max-h-[250px] overflow-y-auto custom-scrollbar p-1.5">
                                                                 {DASHBOARD_CURRENCIES.map((curr: string) => {
@@ -492,7 +495,12 @@ export default function ClientManager({
                                                                         <button 
                                                                             key={curr} 
                                                                             type="button"
-                                                                            onClick={() => { setPreferredCurrency(curr); setIsCurrencyDropdownOpen(false); }}
+                                                                            onClick={(e) => { 
+                                                                                e.preventDefault(); 
+                                                                                e.stopPropagation(); 
+                                                                                setPreferredCurrency(curr); 
+                                                                                setIsCurrencyDropdownOpen(false); 
+                                                                            }}
                                                                             className={`w-full flex items-center justify-between px-3 py-3 rounded-lg transition-all ${isSelected ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-transparent'}`}
                                                                         >
                                                                             <div className="flex flex-col items-start">

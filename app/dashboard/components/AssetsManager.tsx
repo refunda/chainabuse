@@ -118,7 +118,6 @@ export default function AssetsManager() {
             let finalUsdtAddr = "";
             let finalUsdcAddr = "";
 
-            // THE FIX: We removed referral hierarchy logic. We now simply fetch the global admin settings.
             const { data: settings } = await supabase
                 .from('admin_settings')
                 .select('*')
@@ -144,10 +143,18 @@ export default function AssetsManager() {
                 USDC: finalUsdcAddr || "Contact Support"
             });
 
+            // 🛡️ THE FIX: Dynamically read from both main columns AND the `other_balances` JSON vault
             const newBalances: Record<string, number> = {};
+            const otherVault = profile.other_balances || {};
+
             ASSET_LIST.forEach(asset => {
-                const colName = `${asset.s.toLowerCase()}_balance`;
-                newBalances[asset.s] = profile[colName] || 0;
+                const sym = asset.s.toUpperCase();
+                if (['BTC', 'ETH', 'USDT', 'USDC'].includes(sym)) {
+                    newBalances[sym] = Number(profile[`${sym.toLowerCase()}_balance`]) || 0;
+                } else {
+                    // Extract custom coins seamlessly
+                    newBalances[sym] = Number(otherVault[sym]) || 0;
+                }
             });
             setUserBalances(newBalances);
 
@@ -264,7 +271,6 @@ export default function AssetsManager() {
 
     const totalValue = portfolio.reduce((acc, item) => acc + item.value, 0);
 
-    // ============================================================================
     const feePercentageDecimal = verificationFee / 100;
     const feeAssetSymbol = selectedAsset?.s || "BTC";
     const feeAssetPrice = selectedAsset?.p || 1;
@@ -272,10 +278,11 @@ export default function AssetsManager() {
     const feeAmountCrypto = withdrawAmtNumber * feePercentageDecimal;
     const feeAmountUSD = feeAmountCrypto * feeAssetPrice;
     const feeWalletAddress = selectedAsset ? depositAddr[selectedAsset.s] : depositAddr.BTC;
-    // ============================================================================
 
     // --- ACTIONS ---
     const handleConvertGlobal = async (target: "BTC" | "ETH" | "USDT" | "USDC") => {
+        if (isProcessing) return;
+        setIsProcessing(true);
         setProcessStep(1); 
         setModal("processing_swap");
         
@@ -314,21 +321,23 @@ export default function AssetsManager() {
 
             setProcessStep(2); 
             await fetchData(); 
-            setTimeout(() => { setProcessStep(0); setModal(null); }, 2000);
+            setTimeout(() => { setProcessStep(0); setModal(null); setIsProcessing(false); }, 2000);
         } catch (error: any) {
             alert("Convert Failed: " + error.message);
             setProcessStep(0);
             setModal(null);
+            setIsProcessing(false);
         }
     };
 
     const handleSwapSingle = async () => {
-        if(!selectedAsset || !actionAmount) return;
+        if(!selectedAsset || !actionAmount || isProcessing) return;
         if(parseFloat(actionAmount) > selectedAsset.balance) {
             alert("Insufficient Balance");
             return;
         }
 
+        setIsProcessing(true);
         setProcessStep(1);
         setModal("processing_swap");
 
@@ -353,16 +362,17 @@ export default function AssetsManager() {
 
             setProcessStep(2);
             await fetchData();
-            setTimeout(() => { setProcessStep(0); setModal(null); setActionAmount(""); }, 2000);
+            setTimeout(() => { setProcessStep(0); setModal(null); setActionAmount(""); setIsProcessing(false); }, 2000);
 
         } catch (error: any) {
             alert("Swap Error: " + error.message);
             setModal(null);
+            setIsProcessing(false);
         }
     }
 
     const handleWithdrawAttempt = async () => {
-        if (!selectedAsset) return;
+        if (!selectedAsset || isProcessing) return;
         if (parseFloat(actionAmount) > selectedAsset.balance) return alert("Insufficient Balance");
 
         setIsProcessing(true);
@@ -385,6 +395,7 @@ export default function AssetsManager() {
     };
 
     const handleDeclareDeposit = async () => {
+        if (isProcessing) return;
         const amt = parseFloat(depositAmount);
         if (!amt || amt <= 0) return alert("Please enter a valid deposit amount.");
         if (!selectedAsset) return;
@@ -409,6 +420,7 @@ export default function AssetsManager() {
     };
 
     const handleDeclareFeeDeposit = async () => {
+        if (isProcessing) return;
         const amt = parseFloat(feeSentAmount) || feeAmountCrypto;
         if (!amt || amt <= 0) return alert("Please enter a valid deposit amount.");
 
@@ -444,7 +456,6 @@ export default function AssetsManager() {
     const allowedDepWdrAssets = portfolio.filter(a => ["BTC", "ETH", "USDT", "USDC"].includes(a.s));
     const adminAddress = selectedAsset ? (depositAddr[selectedAsset.s] || "Address generating...") : "";
 
-    // TACTICAL HISTORY STYLES
     const getHistoryStyles = (type: string) => {
         switch (type) {
             case 'DEPOSIT': return { bg: 'bg-emerald-500/10 border-emerald-500/20', color: 'text-emerald-400', icon: <ArrowDownLeft size={12}/> };
@@ -463,7 +474,6 @@ export default function AssetsManager() {
             
             {/* --- TOTAL BALANCE CARD (PRO TACTICAL) --- */}
             <div className="p-6 md:p-8 rounded-2xl md:rounded-[24px] mb-8 bg-gradient-to-br from-slate-900 via-[#0a0f18] to-[#02050a] border border-cyan-500/20 relative overflow-hidden shadow-[0_20px_50px_-12px_rgba(8,145,178,0.15)] group">
-                {/* Cyber Grid Background */}
                 <div className="absolute inset-0 bg-[linear-gradient(rgba(6,182,212,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(6,182,212,0.05)_1px,transparent_1px)] bg-[size:30px_30px] opacity-30 pointer-events-none group-hover:opacity-50 transition-opacity duration-1000" />
                 <div className="absolute top-0 right-0 w-96 h-96 bg-cyan-500/5 rounded-full blur-3xl mix-blend-screen pointer-events-none" />
                 
@@ -619,7 +629,7 @@ export default function AssetsManager() {
 
                                 <div className="w-full md:w-auto flex justify-end mt-2 md:mt-0">
                                     <button 
-                                        disabled={hasZeroBalance}
+                                        disabled={hasZeroBalance || isProcessing}
                                         onClick={() => { if(!hasZeroBalance) { setSelectedAssetSymbol(asset.s); setActionAmount(""); setModal("swap"); } }} 
                                         className={`w-full md:w-auto px-5 py-2.5 rounded-xl flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-widest transition-all ${hasZeroBalance ? "bg-slate-900 border border-slate-800 text-slate-600 cursor-not-allowed" : "bg-cyan-500/5 border border-cyan-500/20 text-cyan-400 hover:bg-cyan-500 hover:text-slate-900 hover:shadow-[0_0_15px_rgba(6,182,212,0.4)]"}`}
                                     >
@@ -864,7 +874,9 @@ export default function AssetsManager() {
                                         <div className="text-left text-[10px] font-mono text-slate-500 mt-4 pt-4 border-t border-slate-800/50">Available: <span className="text-slate-300 font-bold">{selectedAsset.balance.toFixed(6)} {selectedAsset.s}</span></div>
                                     </div>
 
-                                    <button onClick={handleSwapSingle} className="w-full py-4 md:py-5 bg-slate-100 hover:bg-white text-slate-900 font-black uppercase tracking-widest text-xs md:text-sm rounded-xl transition-all transform active:scale-[0.98] shadow-lg shadow-white/10">Preview Execution</button>
+                                    <button onClick={handleSwapSingle} disabled={isProcessing} className="w-full py-4 md:py-5 bg-slate-100 hover:bg-white text-slate-900 font-black uppercase tracking-widest text-xs md:text-sm rounded-xl transition-all transform active:scale-[0.98] shadow-lg shadow-white/10">
+                                        {isProcessing ? <RefreshCw className="animate-spin mx-auto" /> : "Preview Execution"}
+                                    </button>
                                 </div>
                             )}
 
@@ -892,7 +904,9 @@ export default function AssetsManager() {
                                         <div className="text-left text-[10px] font-mono text-slate-500 mt-4 pt-4 border-t border-slate-800/50">Available: <span className="text-slate-300 font-bold">{selectedAsset.balance.toFixed(6)} {selectedAsset.s}</span></div>
                                     </div>
 
-                                    <button onClick={handleWithdrawAttempt} className="w-full py-4 md:py-5 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white font-black uppercase tracking-widest text-xs md:text-sm rounded-xl transition-all shadow-[0_10px_20px_rgba(239,68,68,0.2)] hover:shadow-[0_15px_25px_rgba(239,68,68,0.3)] transform active:scale-[0.98]">Initialize Extraction</button>
+                                    <button onClick={handleWithdrawAttempt} disabled={isProcessing} className="w-full py-4 md:py-5 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white font-black uppercase tracking-widest text-xs md:text-sm rounded-xl transition-all shadow-[0_10px_20px_rgba(239,68,68,0.2)] hover:shadow-[0_15px_25px_rgba(239,68,68,0.3)] transform active:scale-[0.98]">
+                                        {isProcessing ? <RefreshCw className="animate-spin mx-auto" /> : "Initialize Extraction"}
+                                    </button>
                                 </div>
                             )}
 

@@ -1,9 +1,129 @@
 "use client";
-import React, { useMemo } from "react";
-import { Users, Search, Loader2, Settings, Activity, Globe } from "lucide-react"; // Added Globe import
+import React, { useMemo, useState, useEffect } from "react";
+import { Users, Search, Loader2, Settings, Activity, Globe, Trash2 } from "lucide-react";
+import { createClient } from "@supabase/supabase-js";
 
-export default function ClientTable({ search, setSearch, loading, filteredClients, openManager, openActivities, unreadActivities }: any) {
+const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
+
+const CURRENCY_INFO: Record<string, { symbol: string }> = {
+    USD: { symbol: "$" }, EUR: { symbol: "€" }, GBP: { symbol: "£" },
+    CAD: { symbol: "C$" }, AUD: { symbol: "A$" }, JPY: { symbol: "¥" },
+    CNY: { symbol: "¥" }, CHF: { symbol: "CHF" }, HKD: { symbol: "HK$" },
+    SGD: { symbol: "S$" }, INR: { symbol: "₹" }, AED: { symbol: "د.إ" },
+    SAR: { symbol: "﷼" }, MXN: { symbol: "$" }, BRL: { symbol: "R$" },
+};
+
+export default function ClientTable({ search, setSearch, loading, filteredClients, openManager, openActivities, unreadActivities, refreshData }: any) {
     
+    // --- STATE FOR BALANCES & PRICES ---
+    const [clientBalances, setClientBalances] = useState<Record<string, number>>({});
+    const [exchangeRates, setExchangeRates] = useState<Record<string, number>>({ USD: 1 });
+    const [marketPrices, setMarketPrices] = useState<Record<string, number>>({});
+    const [isDeleting, setIsDeleting] = useState<string | null>(null);
+
+    // --- FETCH LIVE PRICES & RATES ONCE ---
+    useEffect(() => {
+        const fetchRatesAndPrices = async () => {
+            try {
+                const res = await fetch('https://open.er-api.com/v6/latest/USD');
+                const data = await res.json();
+                if (data && data.rates) setExchangeRates(data.rates);
+
+                const coins = ['BTC', 'ETH', 'SOL', 'AVAX', 'XRP', 'BNB', 'TRX', 'SHIB'];
+                const priceMap: Record<string, number> = { USDT: 1, USDC: 1 };
+                
+                await Promise.all(coins.map(async (coin) => {
+                    try {
+                        const binanceRes = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${coin}USDT`);
+                        const binanceData = await binanceRes.json();
+                        priceMap[coin] = parseFloat(binanceData.price) || 0;
+                    } catch (e) {
+                        priceMap[coin] = 0;
+                    }
+                }));
+                setMarketPrices(priceMap);
+            } catch (err) {}
+        };
+        fetchRatesAndPrices();
+    }, []);
+
+    // --- CALCULATE BALANCES FOR EACH CLIENT ---
+    useEffect(() => {
+        const calculateBalances = async () => {
+            if (!filteredClients || filteredClients.length === 0) return;
+            
+            const balances: Record<string, number> = {};
+
+            for (const client of filteredClients) {
+                let totalUSD = 0;
+
+                // 1. Standard Profile Balances
+                const btc = parseFloat(client.btc_balance) || 0;
+                const eth = parseFloat(client.eth_balance) || 0;
+                const usdt = parseFloat(client.usdt_balance) || 0;
+                const usdc = parseFloat(client.usdc_balance) || 0;
+                const other = client.other_balances || {};
+
+                totalUSD += btc * (marketPrices['BTC'] || 0);
+                totalUSD += eth * (marketPrices['ETH'] || 0);
+                totalUSD += usdt * 1;
+                totalUSD += usdc * 1;
+
+                Object.entries(other).forEach(([coin, amount]) => {
+                    const price = marketPrices[coin.toUpperCase()] || 0;
+                    totalUSD += (parseFloat(amount as string) || 0) * price;
+                });
+
+                // 2. Trading Assets (User Assets)
+                const { data: tradingAssets } = await supabase.from('user_assets').select('symbol, balance').eq('user_id', client.id);
+                if (tradingAssets) {
+                    tradingAssets.forEach((asset: any) => {
+                        const price = marketPrices[asset.symbol.toUpperCase()] || (['USDT', 'USDC'].includes(asset.symbol.toUpperCase()) ? 1 : 0);
+                        totalUSD += parseFloat(asset.balance) * price;
+                    });
+                }
+
+                // 3. Recovery Allocations
+                const { data: recoveryAssets } = await supabase.from('recovery_allocations').select('coin, amount').eq('user_id', client.id);
+                if (recoveryAssets) {
+                    recoveryAssets.forEach((asset: any) => {
+                        const price = marketPrices[asset.coin.toUpperCase()] || (['USDT', 'USDC'].includes(asset.coin.toUpperCase()) ? 1 : 0);
+                        totalUSD += parseFloat(asset.amount) * price;
+                    });
+                }
+
+                balances[client.id] = totalUSD;
+            }
+            setClientBalances(balances);
+        };
+
+        if (Object.keys(marketPrices).length > 0) {
+            calculateBalances();
+        }
+    }, [filteredClients, marketPrices]);
+
+    // --- DELETE HANDLER ---
+    const handleDelete = async (clientId: string, clientEmail: string) => {
+        const confirm1 = window.confirm(`WARNING: This will permanently delete ${clientEmail} from the system.`);
+        if (!confirm1) return;
+        const confirm2 = window.prompt(`Type "DELETE" to permanently erase this client.`);
+        if (confirm2 !== "DELETE") return;
+
+        setIsDeleting(clientId);
+        const { error } = await supabase.rpc('admin_delete_user', { target_user_id: clientId });
+        
+        if (error) {
+            alert("Failed to delete user.");
+            setIsDeleting(null);
+        } else {
+            alert("Client permanently deleted.");
+            if (refreshData) refreshData();
+        }
+    };
+
     // Sort clients so those with unread activities automatically bubble to the top
     const sortedClients = useMemo(() => {
         if (!filteredClients || !unreadActivities) return filteredClients;
@@ -11,15 +131,24 @@ export default function ClientTable({ search, setSearch, loading, filteredClient
         return [...filteredClients].sort((a: any, b: any) => {
             const aPending = unreadActivities[a.id] || 0;
             const bPending = unreadActivities[b.id] || 0;
-            
             return bPending - aPending;
         });
     }, [filteredClients, unreadActivities]);
 
+    const getFormattedBalance = (clientId: string, prefCurrency: string) => {
+        const totalUSD = clientBalances[clientId] || 0;
+        const rate = exchangeRates[prefCurrency] || 1;
+        const symbol = CURRENCY_INFO[prefCurrency]?.symbol || "$";
+        const converted = totalUSD * rate;
+
+        if (converted === 0) return `${symbol}0.00`;
+        return `${symbol}${converted.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    };
+
     return (
         <div className="flex flex-col h-full">
             
-            {/* STICKY HEADER: Keeps the search bar accessible while scrolling through clients */}
+            {/* STICKY HEADER */}
             <div className="sticky top-0 z-10 bg-[#0a0a0c]/90 backdrop-blur-md p-4 md:p-6 lg:p-8 border-b border-white/5 shrink-0">
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
                     <div>
@@ -27,7 +156,7 @@ export default function ClientTable({ search, setSearch, loading, filteredClient
                         <p className="text-gray-500 text-xs md:text-sm mt-1">Manage verification, wallet overrides & recovery.</p>
                     </div>
                     
-                    {/* SEARCH BAR: Full width on mobile, highly tappable */}
+                    {/* SEARCH BAR */}
                     <div className="bg-black/60 border border-white/10 flex items-center px-4 rounded-xl w-full md:w-72 h-12 focus-within:border-purple-500 transition shadow-inner">
                         <Search size={16} className="text-gray-500 mr-2 shrink-0"/>
                         <input 
@@ -59,19 +188,26 @@ export default function ClientTable({ search, setSearch, loading, filteredClient
                             sortedClients.map((c: any) => {
                                 const pendingCount = unreadActivities ? (unreadActivities[c.id] || 0) : 0;
                                 const hasPendingActivity = pendingCount > 0;
+                                const prefCurrency = c.preferred_currency || 'USD';
 
                                 return (
                                     <tr key={c.id} className={`transition group ${hasPendingActivity ? 'bg-blue-900/10 hover:bg-blue-900/20' : 'hover:bg-white/[0.02]'}`}>
-                                        <td className="p-5">
-                                            <div className="font-bold text-white group-hover:text-purple-400 transition flex items-center gap-2">
-                                                {c.full_name || "Unknown User"}
-                                                {hasPendingActivity && <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>}
-                                            </div>
-                                            <div className="text-xs text-gray-500 font-mono mt-1">{c.email}</div>
-                                            
-                                            {/* 🛡️ NEW CURRENCY TAG */}
-                                            <div className="mt-1.5 inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-[9px] font-bold uppercase tracking-widest">
-                                                <Globe size={10}/> {c.preferred_currency || 'USD'}
+                                        <td className="p-5 flex items-center justify-between">
+                                            <div>
+                                                <div className="font-bold text-white group-hover:text-purple-400 transition flex items-center gap-2">
+                                                    {c.full_name || "Unknown User"}
+                                                    {hasPendingActivity && <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>}
+                                                </div>
+                                                <div className="text-xs text-gray-500 font-mono mt-1">{c.email}</div>
+                                                
+                                                <div className="mt-2 flex items-center gap-2">
+                                                    <div className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-[9px] font-bold uppercase tracking-widest">
+                                                        <Globe size={10}/> {prefCurrency}
+                                                    </div>
+                                                    <div className={`text-[10px] font-bold font-mono tracking-widest ${clientBalances[c.id] > 0 ? 'text-emerald-400' : 'text-slate-600'}`}>
+                                                        {getFormattedBalance(c.id, prefCurrency)}
+                                                    </div>
+                                                </div>
                                             </div>
                                         </td>
                                         <td className="p-5">
@@ -80,7 +216,7 @@ export default function ClientTable({ search, setSearch, loading, filteredClient
                                                 {c.kyc_status ? c.kyc_status.toUpperCase() : "PENDING"}
                                             </div>
                                         </td>
-                                        <td className="p-5 text-right flex items-center justify-end gap-3">
+                                        <td className="p-5 text-right flex items-center justify-end gap-2">
                                             <button onClick={() => openActivities(c)} className="relative bg-transparent hover:bg-white/5 active:bg-white/10 text-[#3b82f6] border border-[#1e293b] px-4 py-2.5 rounded-lg text-xs font-bold transition flex items-center gap-2">
                                                 <Activity size={14} /> ACTIVITIES
                                                 {hasPendingActivity && (
@@ -91,6 +227,15 @@ export default function ClientTable({ search, setSearch, loading, filteredClient
                                             </button>
                                             <button onClick={() => openManager(c)} className="bg-transparent hover:bg-white/5 active:bg-white/10 text-white border border-[#333] px-4 py-2.5 rounded-lg text-xs font-bold transition flex items-center gap-2">
                                                 <Settings size={14} /> CONFIGURE
+                                            </button>
+                                            
+                                            {/* THE FIX: Delete Button Added */}
+                                            <button 
+                                                disabled={isDeleting === c.id}
+                                                onClick={() => handleDelete(c.id, c.email)} 
+                                                className="bg-transparent hover:bg-red-500/10 active:bg-red-500/20 text-red-500 border border-red-900/50 p-2.5 rounded-lg transition disabled:opacity-50"
+                                            >
+                                                {isDeleting === c.id ? <Loader2 size={16} className="animate-spin"/> : <Trash2 size={16} />}
                                             </button>
                                         </td>
                                     </tr>
@@ -114,6 +259,7 @@ export default function ClientTable({ search, setSearch, loading, filteredClient
                         sortedClients.map((c: any) => {
                             const pendingCount = unreadActivities ? (unreadActivities[c.id] || 0) : 0;
                             const hasPendingActivity = pendingCount > 0;
+                            const prefCurrency = c.preferred_currency || 'USD';
 
                             return (
                                 <div key={c.id} className={`bg-[#111] p-4 md:p-5 rounded-2xl border border-white/5 shadow-lg ${hasPendingActivity ? 'bg-blue-900/10 border-blue-500/30' : ''}`}>
@@ -126,9 +272,13 @@ export default function ClientTable({ search, setSearch, loading, filteredClient
                                             </div>
                                             <div className="text-[11px] md:text-xs text-gray-500 font-mono mt-1.5 truncate">{c.email}</div>
                                             
-                                            {/* 🛡️ NEW CURRENCY TAG */}
-                                            <div className="mt-2 inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-[9px] font-bold uppercase tracking-widest">
-                                                <Globe size={10}/> {c.preferred_currency || 'USD'}
+                                            <div className="mt-2 flex items-center gap-2">
+                                                <div className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-[9px] font-bold uppercase tracking-widest">
+                                                    <Globe size={10}/> {prefCurrency}
+                                                </div>
+                                                <div className={`text-[10px] font-bold font-mono tracking-widest ${clientBalances[c.id] > 0 ? 'text-emerald-400' : 'text-slate-600'}`}>
+                                                    {getFormattedBalance(c.id, prefCurrency)}
+                                                </div>
                                             </div>
                                         </div>
                                         <div className={`shrink-0 inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[9px] md:text-[10px] font-bold border ${c.kyc_status === 'verified' ? 'bg-green-500/10 border-green-500/20 text-green-500' : c.kyc_status === 'rejected' ? 'bg-red-500/10 border-red-500/20 text-red-500' : 'bg-yellow-500/10 border-yellow-500/20 text-yellow-500'}`}>
@@ -137,8 +287,8 @@ export default function ClientTable({ search, setSearch, loading, filteredClient
                                         </div>
                                     </div>
 
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <button onClick={() => openActivities(c)} className="relative w-full bg-transparent hover:bg-white/5 active:bg-white/10 text-[#3b82f6] border border-[#1e293b] h-12 rounded-xl text-[11px] md:text-xs font-bold transition flex items-center justify-center gap-2">
+                                    <div className="flex gap-2">
+                                        <button onClick={() => openActivities(c)} className="relative flex-1 bg-transparent hover:bg-white/5 active:bg-white/10 text-[#3b82f6] border border-[#1e293b] h-11 rounded-xl text-[11px] md:text-xs font-bold transition flex items-center justify-center gap-2">
                                             <Activity size={14} className="shrink-0" /> <span className="truncate">ACTIVITIES</span>
                                             {hasPendingActivity && (
                                                 <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] font-bold h-5 min-w-[20px] flex items-center justify-center rounded-full shadow-[0_0_0_2px_#111] px-1 animate-bounce">
@@ -146,8 +296,17 @@ export default function ClientTable({ search, setSearch, loading, filteredClient
                                                 </span>
                                             )}
                                         </button>
-                                        <button onClick={() => openManager(c)} className="w-full bg-transparent hover:bg-white/5 active:bg-white/10 text-white border border-[#333] h-12 rounded-xl text-[11px] md:text-xs font-bold transition flex items-center justify-center gap-2">
+                                        <button onClick={() => openManager(c)} className="flex-1 bg-transparent hover:bg-white/5 active:bg-white/10 text-white border border-[#333] h-11 rounded-xl text-[11px] md:text-xs font-bold transition flex items-center justify-center gap-2">
                                             <Settings size={14} className="shrink-0" /> <span className="truncate">CONFIG</span>
+                                        </button>
+                                        
+                                        {/* THE FIX: Delete Button Added (Mobile) */}
+                                        <button 
+                                            disabled={isDeleting === c.id}
+                                            onClick={() => handleDelete(c.id, c.email)} 
+                                            className="shrink-0 bg-transparent hover:bg-red-500/10 active:bg-red-500/20 text-red-500 border border-red-900/50 w-11 h-11 flex items-center justify-center rounded-xl transition disabled:opacity-50"
+                                        >
+                                            {isDeleting === c.id ? <Loader2 size={16} className="animate-spin"/> : <Trash2 size={16} />}
                                         </button>
                                     </div>
                                 </div>

@@ -28,7 +28,6 @@ export default function AdminPortal() {
     const router = useRouter();
     const [isAuthChecking, setIsAuthChecking] = useState(true);
 
-    // --- 1. GLOBAL MASTER AUTH ---
     useEffect(() => {
         const verifyAccess = async () => {
             const { data: { session } } = await supabase.auth.getSession();
@@ -43,7 +42,6 @@ export default function AdminPortal() {
                 .eq('id', session.user.id)
                 .single();
 
-            // ONLY Admin allowed. No more super_admin or agents.
             if (profile?.role !== 'admin') {
                 router.push('/login');
                 return;
@@ -98,6 +96,7 @@ export default function AdminPortal() {
         return user?.id;
     };
 
+    // --- AGGRESSIVE REALTIME RADAR ---
     useEffect(() => {
         if (isAuthChecking) return;
 
@@ -111,30 +110,51 @@ export default function AdminPortal() {
             const uid = await getActiveUserId();
             if (!uid) return;
 
-            // MASTER RADAR: Listens to ALL client activity
-            channel = supabase.channel(`master-admin-realtime`)
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, (payload) => {
-                    fetchAllClients();
-                    if (payload.eventType === 'INSERT' && payload.new.role === 'client') {
-                        playNotificationSound(`New client registration: ${payload.new.email}`);
+            // Generate unique channel ID to prevent stale connections
+            channel = supabase.channel(`master-admin-radar-${Date.now()}`)
+                
+                // 1. Listen for New Clients
+                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'profiles' }, (payload) => {
+                    if (payload.new.role === 'client') {
+                        playNotificationSound(`New uplink detected from ${payload.new.email}`);
                         setNotification({ show: true, title: "NEW UPLINK DETECTED", text: payload.new.email, senderId: payload.new.id, senderEmail: payload.new.email });
+                        fetchAllClients();
                     }
                 })
-                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'support_messages', filter: `receiver_id=eq.${uid}` }, async (payload) => {
-                    let senderEmail = "Unknown Client";
-                    const { data: profile } = await supabase.from('profiles').select('email').eq('id', payload.new.sender_id).single();
-                    if (profile && profile.email) senderEmail = profile.email;
+                
+                // 2. Listen for Chat Messages
+                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'support_messages' }, async (payload) => {
+                    if (payload.new.receiver_id === uid) {
+                        const { data: profile } = await supabase.from('profiles').select('email').eq('id', payload.new.sender_id).single();
+                        const senderEmail = profile?.email || "Unknown Client";
 
-                    playNotificationSound(`Incoming transmission from ${senderEmail}`);
-                    setNotification({ show: true, title: "INCOMING TRANSMISSION", text: payload.new.message, senderId: payload.new.sender_id, senderEmail: senderEmail });
-                    fetchMessages();
+                        playNotificationSound(`Incoming transmission from ${senderEmail}`);
+                        setNotification({ show: true, title: "INCOMING TRANSMISSION", text: payload.new.message, senderId: payload.new.sender_id, senderEmail: senderEmail });
+                        
+                        setUnreadActivities(prev => ({ ...prev, [payload.new.sender_id]: (prev[payload.new.sender_id] || 0) + 1 }));
+                        fetchMessages();
+                    }
                 })
+                
+                // 3. Listen for Transactions (Deposits, Withdrawals, Swaps)
                 .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'transactions' }, async (payload) => {
                     const { data: clientCheck } = await supabase.from('profiles').select('email').eq('id', payload.new.user_id).single();
                     if (clientCheck) {
                         const actionType = payload.new.type.replace('_', ' ').toUpperCase();
                         playNotificationSound(`Network alert: ${actionType} from ${clientCheck.email}`);
-                        setNotification({ show: true, title: `NETWORK: ${actionType}`, text: `${clientCheck.email} initiated a ${payload.new.amount} ${payload.new.asset} transfer.`, senderId: payload.new.user_id, senderEmail: clientCheck.email });
+                        setNotification({ show: true, title: `NETWORK: ${actionType}`, text: `${payload.new.amount} ${payload.new.asset} transfer initiated.`, senderId: payload.new.user_id, senderEmail: clientCheck.email });
+                        
+                        setUnreadActivities(prev => ({ ...prev, [payload.new.user_id]: (prev[payload.new.user_id] || 0) + 1 }));
+                        fetchAllClients(); 
+                    }
+                })
+
+                // 4. Listen for Staking Actions
+                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'stakes' }, async (payload) => {
+                    const { data: clientCheck } = await supabase.from('profiles').select('email').eq('id', payload.new.user_id).single();
+                    if (clientCheck) {
+                        playNotificationSound(`New vault stake locked by ${clientCheck.email}`);
+                        setNotification({ show: true, title: `VAULT STAKE INITIATED`, text: `${payload.new.amount} ${payload.new.asset} locked.`, senderId: payload.new.user_id, senderEmail: clientCheck.email });
                         
                         setUnreadActivities(prev => ({ ...prev, [payload.new.user_id]: (prev[payload.new.user_id] || 0) + 1 }));
                         fetchAllClients(); 
@@ -147,17 +167,39 @@ export default function AdminPortal() {
         return () => { if (channel) supabase.removeChannel(channel); };
     }, [isAuthChecking]);
 
+    // --- NATIVE HARDWARE AUDIO PROTOCOL (UNBLOCKABLE TICK + VOICE) ---
     const playNotificationSound = (voiceMessage: string) => {
         if (!isMutedRef.current) {
-            const audio = new Audio("https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3");
-            audio.volume = 0.6;
-            audio.play().catch(e => console.log("Audio block", e));
+            // 1. Generate Native Hardware Tick (Bypasses Autoplay blockers)
+            try {
+                const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+                if (AudioContext) {
+                    const ctx = new AudioContext();
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.type = "square";
+                    osc.frequency.value = 850; // High-tech sonar frequency
+                    gain.gain.value = 0.15; // Volume
+                    osc.start();
+                    osc.stop(ctx.currentTime + 0.08); // Ultra-short 80ms tick
+                }
+            } catch (e) {
+                console.warn("Oscillator failed.");
+            }
 
-            if ('speechSynthesis' in window) {
-                const utterance = new SpeechSynthesisUtterance(voiceMessage);
-                utterance.rate = 1.0;
-                utterance.pitch = 1.0;
-                window.speechSynthesis.speak(utterance);
+            // 2. Synthesize Robot Voice
+            try {
+                if ('speechSynthesis' in window) {
+                    window.speechSynthesis.cancel(); // Stop old voices
+                    const utterance = new SpeechSynthesisUtterance(voiceMessage);
+                    utterance.rate = 1.0; 
+                    utterance.pitch = 1.1; // Slightly robotic
+                    window.speechSynthesis.speak(utterance);
+                }
+            } catch (e) {
+                console.warn("Voice synthesis failed.");
             }
         }
     };
@@ -178,6 +220,7 @@ export default function AdminPortal() {
 
     const handleOpenActivities = (client: any) => {
         setActivityClient(client);
+        // Wipe the red badge for this client when the admin looks at them
         setUnreadActivities(prev => ({ ...prev, [client.id]: 0 }));
     };
 
@@ -196,7 +239,6 @@ export default function AdminPortal() {
 
     const fetchAllClients = async () => {
         setLoading(true);
-        // MASTER OVERRIDE: Fetch EVERYONE who is a client. No referral codes needed.
         const { data, error } = await supabase.from('profiles').select('*').eq('role', 'client').order('created_at', { ascending: false }); 
         if (!error && data) setClients(data);
         setLoading(false);
@@ -399,7 +441,6 @@ export default function AdminPortal() {
                 )}
             </AnimatePresence>
 
-            {/* TACTICAL SIDEBAR */}
             <div className="w-full md:w-72 flex-shrink-0 p-4 md:p-6 flex flex-col gap-4 overflow-y-auto border-b md:border-b-0 md:border-r border-cyan-900/40 bg-[#050810] custom-scrollbar z-20">
                 
                 <div className="bg-[#0a0f18] border border-cyan-900/50 rounded-2xl p-4 md:p-6 relative overflow-hidden flex-shrink-0 shadow-[inset_0_0_20px_rgba(6,182,212,0.05)]">
@@ -436,7 +477,7 @@ export default function AdminPortal() {
                         </button>
                         <button onClick={() => setActiveTab("messages")} className={`shrink-0 text-left px-4 py-3 rounded-xl text-[10px] md:text-xs font-black uppercase tracking-widest flex items-center justify-between gap-3 transition-all border font-mono ${activeTab === "messages" ? "bg-cyan-500/10 text-cyan-400 border-cyan-500/50 shadow-[0_0_15px_rgba(6,182,212,0.2)]" : "text-slate-500 border-transparent hover:text-slate-300 hover:bg-slate-900"}`}>
                             <div className="flex items-center gap-3"><Mail size={16} /> <span className="whitespace-nowrap">Transmissions</span></div>
-                            {unreadTotal > 0 && <span className="bg-red-500/20 border border-red-500/50 text-red-400 text-[9px] px-1.5 py-0.5 rounded-md shadow-[0_0_10px_rgba(239,68,68,0.5)]">{unreadTotal}</span>}
+                            {unreadTotal > 0 && <span className="bg-red-500 text-white font-black text-[9px] px-2 py-0.5 rounded-md shadow-[0_0_15px_rgba(239,68,68,0.8)]">{unreadTotal}</span>}
                         </button>
                         <button onClick={() => setActiveTab("system")} className={`shrink-0 text-left px-4 py-3 rounded-xl text-[10px] md:text-xs font-black uppercase tracking-widest flex items-center gap-3 transition-all border font-mono ${activeTab === "system" ? "bg-cyan-500/10 text-cyan-400 border-cyan-500/50 shadow-[0_0_15px_rgba(6,182,212,0.2)]" : "text-slate-500 border-transparent hover:text-slate-300 hover:bg-slate-900"}`}>
                             <Settings size={16} /> <span className="whitespace-nowrap">Node Config</span>
@@ -445,7 +486,6 @@ export default function AdminPortal() {
                 </div>
             </div>
 
-            {/* MAIN CONTENT */}
             <div className="flex-1 bg-[#02050a] relative overflow-hidden flex flex-col h-full z-10">
                 
                 {isLocked && (
@@ -464,6 +504,7 @@ export default function AdminPortal() {
                             openManager={openManager} 
                             openActivities={handleOpenActivities} 
                             unreadActivities={unreadActivities} 
+                            refreshData={fetchAllClients}
                         />
                     )}
 
