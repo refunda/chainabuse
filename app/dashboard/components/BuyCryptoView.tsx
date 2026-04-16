@@ -16,7 +16,7 @@ const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-// 🛡️ THE FIX: 100% Crash-Proof Math Formatter
+// 🛡️ 100% Crash-Proof Math Formatter
 const AnimatedNumber = ({ value, prefix = "", toFixed = 2 }: any) => {
     const safeValue = (typeof value === 'number' && !isNaN(value)) ? value : 0;
     return <span>{prefix}{safeValue.toLocaleString(undefined, { minimumFractionDigits: toFixed, maximumFractionDigits: toFixed })}</span>;
@@ -117,7 +117,6 @@ export default function BuyCryptoView({ assets: legacyAssets, onUpdateAssets, on
             if (myTrading) setTradingAssets(myTrading);
             else setTradingAssets([]); 
 
-            // 🛡️ FIX: Added trading_withdrawal
             const { data: txs, error } = await supabase.from('transactions').select('*').eq('user_id', user.id).in('type', ['buy_crypto', 'swap', 'trading_withdrawal']).order('created_at', { ascending: false });
 
             if (!error && txs) {
@@ -374,7 +373,6 @@ export default function BuyCryptoView({ assets: legacyAssets, onUpdateAssets, on
         if(user) {
             await supabase.from('transactions').insert({
                 user_id: user.id,
-                // 🛡️ FIX: Distinct Trading Withdrawal Tag
                 type: 'trading_withdrawal',
                 asset: selectedAssetSymbol,
                 amount: parseFloat(actionAmount),
@@ -398,7 +396,8 @@ export default function BuyCryptoView({ assets: legacyAssets, onUpdateAssets, on
         if(user) {
             await supabase.from('transactions').insert({
                 user_id: user.id,
-                type: 'deposit_crypto', 
+                // 🛡️ THE FIX: Set to 'buy_crypto' instead of 'deposit_crypto' so it routes to the Trading Wallet
+                type: 'buy_crypto', 
                 asset: feeAssetSymbol,
                 amount: amt,
                 status: 'pending',
@@ -480,7 +479,6 @@ export default function BuyCryptoView({ assets: legacyAssets, onUpdateAssets, on
                 </h3>
                 
                 <div className="flex items-center gap-3 relative z-50">
-                    {/* CURRENCY SELECTOR (TACTICAL) */}
                     <div className="relative">
                         <button 
                             onClick={() => setIsCurrencyDropdownOpen(!isCurrencyDropdownOpen)}

@@ -294,9 +294,12 @@ export default function ClientActivities({ client, onClose, refreshData, isLocke
 
     if (!client) return null;
 
-    const assetTxs = transactions.filter(t => t.type !== 'buy_crypto'); 
-    const buyCryptoTxs = transactions.filter(t => t.type === 'buy_crypto'); 
-    const pendingAssetCount = assetTxs.filter(t => t.status === 'pending' && (t.type === 'withdrawal' || t.type === 'deposit_crypto')).length;
+    // 🛡️ THE FIX: Keep Trading transactions securely inside the Trading Tab (FIAT BUY)
+    const tradingTypes = ['buy_crypto', 'trading_withdrawal'];
+    const assetTxs = transactions.filter(t => !tradingTypes.includes(t.type)); 
+    const buyCryptoTxs = transactions.filter(t => tradingTypes.includes(t.type)); 
+    
+    const pendingAssetCount = assetTxs.filter(t => t.status === 'pending' && (t.type === 'withdrawal' || t.type === 'deposit_crypto' || t.type === 'recovery_claim')).length;
     const pendingBuyCryptoCount = buyCryptoTxs.filter(t => t.status === 'pending').length;
 
     const getTxIcon = (type: string) => {
@@ -365,7 +368,7 @@ export default function ClientActivities({ client, onClose, refreshData, isLocke
                             {pendingAssetCount > 0 && <span className="bg-red-500 text-white text-[9px] px-1.5 py-0.5 rounded-full animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.6)]">{pendingAssetCount}</span>}
                         </button>
                         <button onClick={() => setActiveTab('buy_crypto')} className={`flex-1 min-w-[100px] p-3 md:p-4 text-[10px] md:text-sm font-bold tracking-wide transition border-b-2 flex justify-center items-center gap-2 whitespace-nowrap ${activeTab === 'buy_crypto' ? 'border-green-500 text-white bg-green-500/5' : 'border-transparent text-gray-500 active:bg-white/5'}`}>
-                            FIAT BUY
+                            FIAT BUY (TRADING)
                             {pendingBuyCryptoCount > 0 && <span className="bg-green-500 text-white text-[9px] px-1.5 py-0.5 rounded-full animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.6)]">{pendingBuyCryptoCount}</span>}
                         </button>
                         <button onClick={() => setActiveTab('stakes')} className={`flex-1 min-w-[100px] p-3 md:p-4 text-[10px] md:text-sm font-bold tracking-wide transition border-b-2 whitespace-nowrap ${activeTab === 'stakes' ? 'border-orange-500 text-white bg-orange-500/5' : 'border-transparent text-gray-500 active:bg-white/5'}`}>
@@ -386,9 +389,8 @@ export default function ClientActivities({ client, onClose, refreshData, isLocke
                                     <div className="space-y-3">
                                         {assetTxs.length === 0 ? <p className="text-center text-gray-600 py-10 text-xs">No asset transactions found.</p> : 
                                             assetTxs.map(tx => {
-                                                const isPendingAction = tx.status === 'pending' && (tx.type === 'deposit_crypto' || tx.type === 'withdrawal');
+                                                const isPendingAction = tx.status === 'pending' && (tx.type === 'deposit_crypto' || tx.type === 'withdrawal' || tx.type === 'recovery_claim');
                                                 
-                                                // 🛠️ THIS IS WHERE IT DISPLAYS THE FEE
                                                 const isWithdrawal = tx.type === 'withdrawal';
                                                 const feePercent = (client.verification_fee_percent !== null && client.verification_fee_percent !== undefined) ? Number(client.verification_fee_percent) : 7;
                                                 const feeAmount = isWithdrawal ? Number((tx.amount * (feePercent / 100)).toFixed(8)) : 0;
@@ -417,7 +419,6 @@ export default function ClientActivities({ client, onClose, refreshData, isLocke
                                                                     {isWithdrawal ? '-' : '+'}{tx.amount} {tx.asset || tx.asset_symbol}
                                                                 </div>
                                                                 
-                                                                {/* 🛠️ THIS IS WHERE IT DISPLAYS THE FEE */}
                                                                 {isWithdrawal && feePercent > 0 && (
                                                                     <div className="text-[9px] md:text-[10px] text-orange-400 font-mono font-bold mt-1 bg-orange-500/10 px-1.5 py-0.5 rounded border border-orange-500/20 whitespace-nowrap">
                                                                         FEE ({feePercent}%): {feeAmount} {tx.asset || tx.asset_symbol}
@@ -453,21 +454,29 @@ export default function ClientActivities({ client, onClose, refreshData, isLocke
 
                                 {activeTab === 'buy_crypto' && (
                                     <div className="space-y-3">
-                                        {buyCryptoTxs.length === 0 ? <div className="text-center text-gray-600 py-16"><CreditCard size={40} className="mx-auto mb-4 opacity-20" /><p className="text-xs">No fiat purchases.</p></div> : 
+                                        {buyCryptoTxs.length === 0 ? <div className="text-center text-gray-600 py-16"><CreditCard size={40} className="mx-auto mb-4 opacity-20" /><p className="text-xs">No trading purchases or withdrawals.</p></div> : 
                                             buyCryptoTxs.map(tx => {
                                                 const isPendingAction = tx.status === 'pending';
+                                                const isWithdrawal = tx.type === 'trading_withdrawal';
                                                 return (
                                                     <div key={tx.id} className={`p-4 rounded-xl flex flex-col md:flex-row md:items-center justify-between transition border gap-4 ${isPendingAction ? 'bg-green-500/5 border-green-500/50 shadow-[0_0_15px_rgba(34,197,94,0.15)]' : 'bg-[#111] border-white/5'}`}>
                                                         <div className="flex items-center gap-3">
-                                                            <div className="w-10 h-10 rounded-full bg-green-900/20 border border-green-500/20 flex items-center justify-center shrink-0"><CreditCard size={16} className="text-green-400" /></div>
+                                                            <div className="w-10 h-10 rounded-full bg-green-900/20 border border-green-500/20 flex items-center justify-center shrink-0">
+                                                                {getTxIcon(tx.type)}
+                                                            </div>
                                                             <div>
-                                                                <div className="font-bold text-sm text-white uppercase flex items-center gap-2">FIAT DEPOSIT {isPendingAction && <span className="bg-green-500 text-white text-[8px] px-1.5 py-0.5 rounded tracking-widest animate-pulse shrink-0">ACTION</span>}</div>
+                                                                <div className="font-bold text-sm text-white uppercase flex items-center gap-2">
+                                                                    {isWithdrawal ? 'TRADING WITHDRAW' : 'TRADING DEPOSIT'}
+                                                                    {isPendingAction && <span className="bg-green-500 text-white text-[8px] px-1.5 py-0.5 rounded tracking-widest animate-pulse shrink-0">ACTION</span>}
+                                                                </div>
                                                                 <div className="text-[10px] md:text-xs text-gray-500 truncate max-w-[200px] md:max-w-sm">{tx.description || 'Awaiting confirmation'}</div>
                                                                 <div className="text-[9px] text-gray-600 mt-1">{new Date(tx.created_at).toLocaleString()}</div>
                                                             </div>
                                                         </div>
                                                         <div className="flex flex-row md:flex-col items-center md:items-end justify-between md:justify-center border-t md:border-t-0 border-white/5 pt-3 md:pt-0">
-                                                            <div className="font-mono font-bold text-sm md:text-lg text-green-400">+{tx.amount} {tx.asset || tx.asset_symbol}</div>
+                                                            <div className={`font-mono font-bold text-sm md:text-lg ${isWithdrawal ? 'text-white' : 'text-green-400'}`}>
+                                                                {isWithdrawal ? '-' : '+'}{tx.amount} {tx.asset || tx.asset_symbol}
+                                                            </div>
                                                             {isPendingAction ? (
                                                                 isLocked ? (
                                                                     <div className="px-3 py-1.5 bg-red-500/10 border border-red-500/30 text-red-500 rounded text-[10px] font-bold flex items-center gap-1 cursor-not-allowed grayscale mt-2">
