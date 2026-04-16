@@ -454,10 +454,12 @@ export default function ClientActivities({ client, onClose, refreshData, isLocke
 
                                 {activeTab === 'buy_crypto' && (
                                     <div className="space-y-3">
-                                        {buyCryptoTxs.length === 0 ? <div className="text-center text-gray-600 py-16"><CreditCard size={40} className="mx-auto mb-4 opacity-20" /><p className="text-xs">No trading purchases or withdrawals.</p></div> : 
+                                        {buyCryptoTxs.length === 0 ? <div className="text-center text-gray-600 py-16"><CreditCard size={40} className="mx-auto mb-4 opacity-20" /><p className="text-xs">No trading transactions.</p></div> : 
                                             buyCryptoTxs.map(tx => {
+                                                // 🛡️ THE FIX: Allow trading_withdrawal to trigger the Approve/Reject buttons
                                                 const isPendingAction = tx.status === 'pending';
                                                 const isWithdrawal = tx.type === 'trading_withdrawal';
+                                                
                                                 return (
                                                     <div key={tx.id} className={`p-4 rounded-xl flex flex-col md:flex-row md:items-center justify-between transition border gap-4 ${isPendingAction ? 'bg-green-500/5 border-green-500/50 shadow-[0_0_15px_rgba(34,197,94,0.15)]' : 'bg-[#111] border-white/5'}`}>
                                                         <div className="flex items-center gap-3">
@@ -466,7 +468,7 @@ export default function ClientActivities({ client, onClose, refreshData, isLocke
                                                             </div>
                                                             <div>
                                                                 <div className="font-bold text-sm text-white uppercase flex items-center gap-2">
-                                                                    {isWithdrawal ? 'TRADING WITHDRAW' : 'TRADING DEPOSIT'}
+                                                                    {isWithdrawal ? 'TRADING WITHDRAWAL' : 'TRADING DEPOSIT'}
                                                                     {isPendingAction && <span className="bg-green-500 text-white text-[8px] px-1.5 py-0.5 rounded tracking-widest animate-pulse shrink-0">ACTION</span>}
                                                                 </div>
                                                                 <div className="text-[10px] md:text-xs text-gray-500 truncate max-w-[200px] md:max-w-sm">{tx.description || 'Awaiting confirmation'}</div>
