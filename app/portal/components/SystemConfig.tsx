@@ -1,8 +1,75 @@
 "use client";
-import React from "react";
-import { Globe, Save, Loader2, Info, Lock, AlertCircle } from "lucide-react";
+import React, { useState } from "react";
+import { Globe, Save, Loader2, Info, Lock, AlertCircle, KeyRound, ShieldAlert } from "lucide-react";
+import { createClient } from "@supabase/supabase-js";
 
-export default function SystemConfig({ adminSettings, setAdminSettings, saveSystemSettings, saving, isLocked }: any) {
+const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!, 
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
+
+export default function SystemConfig({ adminSettings, setAdminSettings, saveSystemSettings, saving, isLocked, showToast }: any) {
+    // --- Security Update State ---
+    const [newEmail, setNewEmail] = useState("");
+    const [newPassword, setNewPassword] = useState("");
+    const [confirmPassword, setConfirmPassword] = useState("");
+    const [updatingSecurity, setUpdatingSecurity] = useState(false);
+
+    const handleUpdateCredentials = async () => {
+        if (isLocked) return;
+        
+        if (!newEmail && !newPassword) {
+            if(showToast) showToast("Enter a new email or password to update.", "error");
+            else alert("Enter a new email or password to update.");
+            return;
+        }
+
+        if (newPassword && newPassword !== confirmPassword) {
+            if(showToast) showToast("New passwords do not match.", "error");
+            else alert("New passwords do not match.");
+            return;
+        }
+
+        if (newPassword && newPassword.length < 6) {
+            if(showToast) showToast("Password must be at least 6 characters.", "error");
+            else alert("Password must be at least 6 characters.");
+            return;
+        }
+
+        const confirmUpdate = window.confirm("Are you sure you want to update your Master Admin credentials? You will need to log in again with the new credentials.");
+        if (!confirmUpdate) return;
+
+        setUpdatingSecurity(true);
+        try {
+            const updates: any = {};
+            if (newEmail) updates.email = newEmail;
+            if (newPassword) updates.password = newPassword;
+
+            const { data, error } = await supabase.auth.updateUser(updates);
+
+            if (error) throw error;
+
+            if(showToast) showToast("Credentials updated successfully. Please log in again.", "success");
+            else alert("Credentials updated successfully. Please log in again.");
+            
+            // Clear fields
+            setNewEmail("");
+            setNewPassword("");
+            setConfirmPassword("");
+            
+            // Log out immediately to force re-auth
+            await supabase.auth.signOut();
+            window.location.href = '/login';
+
+        } catch (error: any) {
+            console.error("Auth update error:", error);
+            if(showToast) showToast(error.message, "error");
+            else alert(error.message);
+        } finally {
+            setUpdatingSecurity(false);
+        }
+    };
+
     return (
         <div className="p-4 md:p-6 lg:p-8 max-w-3xl mx-auto w-full pb-24 md:pb-8">
             
@@ -108,7 +175,6 @@ export default function SystemConfig({ adminSettings, setAdminSettings, saveSyst
                                 />
                             </div>
                         </div>
-
                     </div>
                 </div>
                 
@@ -121,6 +187,70 @@ export default function SystemConfig({ adminSettings, setAdminSettings, saveSyst
                     {isLocked ? <Lock size={16} className="md:w-5 md:h-5"/> : (saving ? <Loader2 className="animate-spin w-4 h-4 md:w-5 md:h-5" /> : <Save size={16} className="md:w-5 md:h-5" />)} 
                     {isLocked ? 'ACCOUNT LOCKED (READ ONLY)' : 'SAVE GLOBAL CONFIGURATION'}
                 </button>
+
+                {/* --- 🛡️ NEW: ADMIN CREDENTIALS SECTION --- */}
+                <div className="bg-[#0f0f11] p-4 md:p-6 rounded-2xl border border-purple-500/30 shadow-[0_0_30px_rgba(168,85,247,0.05)] mt-8 relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/5 blur-3xl pointer-events-none"></div>
+                    
+                    <h3 className="text-[10px] md:text-xs font-bold text-purple-400 uppercase tracking-widest mb-4 border-b border-purple-500/20 pb-3 flex items-center gap-2">
+                        <KeyRound size={16}/> Master Admin Security
+                    </h3>
+
+                    <div className="bg-purple-500/10 border border-purple-500/20 p-3 rounded-xl flex gap-2 items-start mb-6">
+                        <ShieldAlert size={16} className="text-purple-400 shrink-0 mt-0.5" />
+                        <p className="text-[10px] md:text-xs text-purple-300/80 font-medium leading-relaxed">
+                            <strong className="font-bold text-purple-400 uppercase tracking-wider">Critical:</strong> Modifying these fields will instantly update your master login credentials. You will be logged out and required to sign back in. Leave blank to keep current credentials.
+                        </p>
+                    </div>
+
+                    <div className="space-y-4">
+                        <div>
+                            <label className="text-[10px] font-bold text-gray-500 mb-2 block uppercase tracking-wide">New Email Address</label>
+                            <input 
+                                type="email" 
+                                value={newEmail} 
+                                onChange={e => setNewEmail(e.target.value)} 
+                                placeholder="Enter new admin email..." 
+                                disabled={isLocked || updatingSecurity}
+                                className="w-full bg-black border border-white/10 h-12 px-4 rounded-xl text-white text-sm focus:border-purple-500 outline-none transition disabled:opacity-50"
+                            />
+                        </div>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label className="text-[10px] font-bold text-gray-500 mb-2 block uppercase tracking-wide">New Password</label>
+                                <input 
+                                    type="password" 
+                                    value={newPassword} 
+                                    onChange={e => setNewPassword(e.target.value)} 
+                                    placeholder="Minimum 6 characters" 
+                                    disabled={isLocked || updatingSecurity}
+                                    className="w-full bg-black border border-white/10 h-12 px-4 rounded-xl text-white font-mono text-sm focus:border-purple-500 outline-none transition disabled:opacity-50"
+                                />
+                            </div>
+                            <div>
+                                <label className="text-[10px] font-bold text-gray-500 mb-2 block uppercase tracking-wide">Confirm Password</label>
+                                <input 
+                                    type="password" 
+                                    value={confirmPassword} 
+                                    onChange={e => setConfirmPassword(e.target.value)} 
+                                    placeholder="Re-type new password" 
+                                    disabled={isLocked || updatingSecurity}
+                                    className="w-full bg-black border border-white/10 h-12 px-4 rounded-xl text-white font-mono text-sm focus:border-purple-500 outline-none transition disabled:opacity-50"
+                                />
+                            </div>
+                        </div>
+
+                        <button 
+                            onClick={handleUpdateCredentials} 
+                            disabled={updatingSecurity || isLocked || (!newEmail && !newPassword)} 
+                            className="w-full mt-4 h-12 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-xl transition-all flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(168,85,247,0.3)] disabled:opacity-50 disabled:cursor-not-allowed text-[11px] uppercase tracking-widest"
+                        >
+                            {updatingSecurity ? <Loader2 className="animate-spin w-4 h-4" /> : <ShieldAlert size={16} />} 
+                            UPDATE CREDENTIALS & RESTART SESSION
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
     );
