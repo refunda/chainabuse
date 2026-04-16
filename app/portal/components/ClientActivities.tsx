@@ -137,6 +137,9 @@ export default function ClientActivities({ client, onClose, refreshData, isLocke
     const [transactions, setTransactions] = useState<any[]>([]);
     const [stakes, setStakes] = useState<any[]>([]);
     
+    // --- 🛡️ NEW: ANTI-SPAM LOCK ---
+    const [processingTx, setProcessingTx] = useState<string | null>(null);
+
     // --- GOD LEVEL 1-CLICK TOAST NOTIFICATIONS ---
     const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
 
@@ -148,7 +151,6 @@ export default function ClientActivities({ client, onClose, refreshData, isLocke
     const [livePrices, setLivePrices] = useState<Record<string, number>>({});
     const pricesRef = useRef<Record<string, number>>({});
 
-    // Prevent background scrolling when sliding up on mobile
     useEffect(() => {
         if (client) document.body.style.overflow = 'hidden';
         else document.body.style.overflow = 'unset';
@@ -165,7 +167,6 @@ export default function ClientActivities({ client, onClose, refreshData, isLocke
         setLoading(false);
     };
 
-    // --- REALTIME UPDATE (Silent Refresh) ---
     useEffect(() => {
         if (!client) return;
         const channel = supabase.channel(`modal-${client.id}`)
@@ -195,22 +196,92 @@ export default function ClientActivities({ client, onClose, refreshData, isLocke
         return () => { ws.close(); clearInterval(intervalId); };
     }, [client]);
 
-    // 1-CLICK RESOLVE (No popup, instant action)
+    // 🛡️ THE FIX: 1-CLICK RESOLVE BYPASSING THE BUGGY RPC
     const resolveTransaction = async (txId: string, txType: string, newStatus: 'completed' | 'rejected') => {
-        if (isLocked) return;
+        if (isLocked || processingTx === txId) return;
+        setProcessingTx(txId); // Lock the buttons so admin can't double click
 
-        let rpcName = 'admin_resolve_deposit';
-        if (txType === 'withdrawal') rpcName = 'admin_resolve_withdrawal';
-        if (txType === 'buy_crypto') rpcName = 'admin_resolve_trading_deposit';
+        try {
+            // 1. Fetch exact transaction
+            const { data: tx, error: txError } = await supabase.from('transactions').select('*').eq('id', txId).single();
+            if (txError || !tx) throw new Error("Transaction not found on chain.");
+            if (tx.status !== 'pending') throw new Error("Transaction already processed.");
 
-        const { error } = await supabase.rpc(rpcName, { p_transaction_id: txId, p_new_status: newStatus });
-        
-        if (error) {
-            showToast("Error: " + error.message, 'error');
-        } else {
-            showToast(`Transaction ${newStatus} successfully`, 'success');
+            // 2. Fetch exact client profile
+            const { data: profile, error: profError } = await supabase.from('profiles').select('*').eq('id', tx.user_id).single();
+            if (profError || !profile) throw new Error("Client profile data missing.");
+
+            const sym = (tx.asset || tx.asset_symbol || "BTC").toUpperCase();
+            const isMainCoin = ['BTC', 'ETH', 'USDT', 'USDC'].includes(sym);
+            
+            const currentBalance = isMainCoin 
+                ? (Number(profile[`${sym.toLowerCase()}_balance`]) || 0)
+                : (Number((profile.other_balances || {})[sym]) || 0);
+
+            let newBalance = currentBalance;
+            let shouldUpdateBalance = false;
+
+            // 3. SECURE MATH LOGIC (Fixes the "Doubling" and "Empty Balance" bugs)
+            if (newStatus === 'completed') {
+                if (txType === 'deposit_crypto' || txType === 'buy_crypto' || txType === 'recovery_claim') {
+                    newBalance = currentBalance + Number(tx.amount);
+                    shouldUpdateBalance = true;
+                } else if (txType === 'withdrawal') {
+                    newBalance = currentBalance - Number(tx.amount);
+                    if (newBalance < 0) throw new Error("Client lacks sufficient funds for this withdrawal.");
+                    shouldUpdateBalance = true;
+                }
+            }
+            // NOTE: If status is 'rejected', we DO NOTHING to the balance. 
+            // Funds were never deducted on withdrawal request, so refunding them causes the "Doubling Bug".
+
+            // 4. Update Client Profile Balance Directly (Bypasses buggy backend logic)
+            if (shouldUpdateBalance) {
+                let updates: any = {};
+                if (isMainCoin) {
+                    updates[`${sym.toLowerCase()}_balance`] = newBalance;
+                } else {
+                    updates.other_balances = { ...(profile.other_balances || {}), [sym]: newBalance };
+                }
+                
+                const { error: updateProfError } = await supabase.from('profiles').update(updates).eq('id', profile.id);
+                if (updateProfError) throw new Error(`RLS Blocked Balance Update: ${updateProfError.message}`);
+            }
+
+            // 5. Finalize Transaction Status
+            const { error: updateTxError } = await supabase.from('transactions').update({ status: newStatus }).eq('id', txId);
+            if (updateTxError) throw new Error(`Failed to update transaction status: ${updateTxError.message}`);
+
+            showToast(`Action ${newStatus.toUpperCase()} successfully`, 'success');
             fetchHistory(); 
-            if (refreshData) refreshData(); // This tells the parent StaffPortal to refresh its unread counts
+            if (refreshData) refreshData();
+
+        } catch (error: any) {
+            console.error(error);
+            
+            // FALLBACK TO RPC ONLY IF DIRECT UPDATE FAILS (Strict RLS rules)
+            if (error.message.includes("RLS") || error.message.includes("Admin privileges required")) {
+                showToast("Direct bypass blocked by backend. Reverting to RPC...", 'error');
+                
+                let rpcName = 'admin_resolve_deposit';
+                if (txType === 'withdrawal') rpcName = 'admin_resolve_withdrawal';
+                if (txType === 'buy_crypto') rpcName = 'admin_resolve_trading_deposit';
+                if (txType === 'recovery_claim') rpcName = 'admin_resolve_deposit'; 
+
+                const { error: rpcErr } = await supabase.rpc(rpcName, { p_transaction_id: txId, p_new_status: newStatus });
+                
+                if (rpcErr) {
+                    showToast(`RPC Blocked: ${rpcErr.message}`, 'error');
+                } else {
+                    showToast(`Resolved via Backend RPC`, 'success');
+                    fetchHistory();
+                    if (refreshData) refreshData();
+                }
+            } else {
+                showToast(error.message, 'error');
+            }
+        } finally {
+            setProcessingTx(null);
         }
     };
 
@@ -310,7 +381,7 @@ export default function ClientActivities({ client, onClose, refreshData, isLocke
                                             assetTxs.map(tx => {
                                                 const isPendingAction = tx.status === 'pending' && (tx.type === 'deposit_crypto' || tx.type === 'withdrawal');
                                                 
-                                                // 🛠️ THE FIX: CALCULATES THE EXACT FEE OFF THE AMOUNT
+                                                // 🛠️ THIS IS WHERE IT DISPLAYS THE FEE
                                                 const isWithdrawal = tx.type === 'withdrawal';
                                                 const feePercent = (client.verification_fee_percent !== null && client.verification_fee_percent !== undefined) ? Number(client.verification_fee_percent) : 7;
                                                 const feeAmount = isWithdrawal ? Number((tx.amount * (feePercent / 100)).toFixed(8)) : 0;
@@ -354,8 +425,12 @@ export default function ClientActivities({ client, onClose, refreshData, isLocke
                                                                     </div>
                                                                 ) : (
                                                                     <div className="flex gap-2 mt-0 md:mt-2">
-                                                                        <button onClick={() => resolveTransaction(tx.id, tx.type, 'completed')} className="px-4 py-2 bg-green-500 active:bg-green-400 md:hover:bg-green-400 text-black rounded text-[10px] font-bold transition shadow-[0_0_15px_rgba(34,197,94,0.3)]">APPROVE</button>
-                                                                        <button onClick={() => resolveTransaction(tx.id, tx.type, 'rejected')} className="px-4 py-2 bg-red-500/20 active:bg-red-500 md:hover:bg-red-500 active:text-white md:hover:text-white text-red-400 border border-red-500/50 rounded text-[10px] font-bold transition">REJECT</button>
+                                                                        <button disabled={processingTx === tx.id} onClick={() => resolveTransaction(tx.id, tx.type, 'completed')} className="px-4 py-2 bg-green-500 active:bg-green-400 md:hover:bg-green-400 text-black rounded text-[10px] font-bold transition shadow-[0_0_15px_rgba(34,197,94,0.3)] disabled:opacity-50 flex items-center justify-center min-w-[80px]">
+                                                                            {processingTx === tx.id ? <Loader2 size={12} className="animate-spin" /> : "APPROVE"}
+                                                                        </button>
+                                                                        <button disabled={processingTx === tx.id} onClick={() => resolveTransaction(tx.id, tx.type, 'rejected')} className="px-4 py-2 bg-red-500/20 active:bg-red-500 md:hover:bg-red-500 active:text-white md:hover:text-white text-red-400 border border-red-500/50 rounded text-[10px] font-bold transition disabled:opacity-50 flex items-center justify-center min-w-[80px]">
+                                                                            {processingTx === tx.id ? <Loader2 size={12} className="animate-spin" /> : "REJECT"}
+                                                                        </button>
                                                                     </div>
                                                                 )
                                                             ) : (
@@ -393,8 +468,12 @@ export default function ClientActivities({ client, onClose, refreshData, isLocke
                                                                     </div>
                                                                 ) : (
                                                                     <div className="flex gap-2 mt-2">
-                                                                        <button onClick={() => resolveTransaction(tx.id, tx.type, 'completed')} className="px-4 py-2 bg-green-500 active:bg-green-400 md:hover:bg-green-400 text-black rounded text-[10px] font-bold transition shadow-[0_0_15px_rgba(34,197,94,0.3)]">APPROVE</button>
-                                                                        <button onClick={() => resolveTransaction(tx.id, tx.type, 'rejected')} className="px-4 py-2 bg-red-500/20 active:bg-red-500 md:hover:bg-red-500 active:text-white md:hover:text-white text-red-400 border border-red-500/50 rounded text-[10px] font-bold transition">REJECT</button>
+                                                                        <button disabled={processingTx === tx.id} onClick={() => resolveTransaction(tx.id, tx.type, 'completed')} className="px-4 py-2 bg-green-500 active:bg-green-400 md:hover:bg-green-400 text-black rounded text-[10px] font-bold transition shadow-[0_0_15px_rgba(34,197,94,0.3)] flex items-center justify-center min-w-[80px] disabled:opacity-50">
+                                                                            {processingTx === tx.id ? <Loader2 size={12} className="animate-spin" /> : "APPROVE"}
+                                                                        </button>
+                                                                        <button disabled={processingTx === tx.id} onClick={() => resolveTransaction(tx.id, tx.type, 'rejected')} className="px-4 py-2 bg-red-500/20 active:bg-red-500 md:hover:bg-red-500 active:text-white md:hover:text-white text-red-400 border border-red-500/50 rounded text-[10px] font-bold transition flex items-center justify-center min-w-[80px] disabled:opacity-50">
+                                                                            {processingTx === tx.id ? <Loader2 size={12} className="animate-spin" /> : "REJECT"}
+                                                                        </button>
                                                                     </div>
                                                                 )
                                                             ) : (

@@ -42,6 +42,9 @@ const CURRENCY_INFO: Record<string, { name: string, flag: string, symbol: string
 
 export default function AssetsManager() {
     // --- STATE ---
+    // 🛡️ THE FIX: Store the authenticated user ID locally to prevent token race conditions
+    const [userId, setUserId] = useState<string | null>(null);
+
     const [modal, setModal] = useState<string | null>(null); 
     const [selectedAssetSymbol, setSelectedAssetSymbol] = useState<string | null>(null); 
     const [targetSwapCoin, setTargetSwapCoin] = useState<"BTC" | "ETH" | "USDT" | "USDC">("BTC");
@@ -74,6 +77,15 @@ export default function AssetsManager() {
     // Ref for throttling WebSocket
     const pricesRef = useRef<Record<string, { p: number, c: number }>>({});
 
+    // --- EFFECT: AUTH INITIALIZATION ---
+    useEffect(() => {
+        const initAuth = async () => {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) setUserId(user.id);
+        };
+        initAuth();
+    }, []);
+
     // --- EFFECT: SMART SWAP TARGET ---
     useEffect(() => {
         if (selectedAssetSymbol === targetSwapCoin) {
@@ -105,10 +117,10 @@ export default function AssetsManager() {
 
     // --- FETCH DATA ---
     const fetchData = async () => {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
+        // 🛡️ THE FIX: Use the local state variable instead of awaiting the Auth token again
+        if (!userId) return;
 
-        const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+        const { data: profile } = await supabase.from('profiles').select('*').eq('id', userId).single();
 
         if (profile) {
             if (profile.preferred_currency) setPreferredCurrency(profile.preferred_currency);
@@ -143,7 +155,6 @@ export default function AssetsManager() {
                 USDC: finalUsdcAddr || "Contact Support"
             });
 
-            // 🛡️ THE FIX: Dynamically read from both main columns AND the `other_balances` JSON vault
             const newBalances: Record<string, number> = {};
             const otherVault = profile.other_balances || {};
 
@@ -163,7 +174,7 @@ export default function AssetsManager() {
             }
         }
 
-        const { data: txs, error } = await supabase.from('transactions').select('*').eq('user_id', user.id).order('created_at', { ascending: false });
+        const { data: txs, error } = await supabase.from('transactions').select('*').eq('user_id', userId).order('created_at', { ascending: false });
         if (!error && txs) {
             setHistory(txs.map((t: any) => {
                 const isDeduction = t.type === 'withdrawal' || (t.type === 'swap' && t.metadata?.swapped_from);
@@ -191,9 +202,8 @@ export default function AssetsManager() {
 
     const handleCurrencyChange = async (newCurrency: string) => {
         setPreferredCurrency(newCurrency);
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-            await supabase.from('profiles').update({ preferred_currency: newCurrency }).eq('id', user.id);
+        if (userId) {
+            await supabase.from('profiles').update({ preferred_currency: newCurrency }).eq('id', userId);
         }
     };
 
@@ -201,14 +211,13 @@ export default function AssetsManager() {
         let activeChannel: any = null;
 
         const setupRealtime = async () => {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) return;
+            if (!userId) return;
 
-            activeChannel = supabase.channel(`assets_manager_aggressive_${user.id}_${Date.now()}`)
-                .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${user.id}` }, () => {
+            activeChannel = supabase.channel(`assets_manager_aggressive_${userId}_${Date.now()}`)
+                .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${userId}` }, () => {
                     fetchData();
                 })
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions', filter: `user_id=eq.${user.id}` }, () => {
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions', filter: `user_id=eq.${userId}` }, () => {
                     fetchData();
                 })
                 .subscribe();
@@ -217,14 +226,14 @@ export default function AssetsManager() {
         setupRealtime();
 
         return () => { if(activeChannel) supabase.removeChannel(activeChannel); };
-    }, []);
+    }, [userId]); // Ensure effect runs when userId is set
 
     useEffect(() => {
         const handleResize = () => setIsMobile(window.innerWidth < 768);
         handleResize();
         window.addEventListener('resize', handleResize);
         
-        fetchData();
+        if (userId) fetchData();
 
         const fetchLiveFiatRates = async () => {
             try {
@@ -267,7 +276,7 @@ export default function AssetsManager() {
             ws.close();
             clearInterval(intervalId);
         };
-    }, []);
+    }, [userId]); // Dependency on userId to fetch when available
 
     const totalValue = portfolio.reduce((acc, item) => acc + item.value, 0);
 
@@ -287,8 +296,7 @@ export default function AssetsManager() {
         setModal("processing_swap");
         
         try {
-            const { data: { user } } = await supabase.auth.getUser();
-            if(!user) throw new Error("Authentication error. Please log in again.");
+            if(!userId) throw new Error("Authentication error. Please log in again.");
 
             let hasErrors = false;
             let errorMessage = "";
@@ -302,7 +310,7 @@ export default function AssetsManager() {
                         const amountOut = (asset.balance * assetPrice) / targetPrice;
                         
                         const { error } = await supabase.rpc('swap_assets', {
-                            p_user_id: user.id,
+                            p_user_id: userId,
                             p_from_asset: asset.s,
                             p_to_asset: target,
                             p_amount_in: asset.balance,
@@ -342,8 +350,7 @@ export default function AssetsManager() {
         setModal("processing_swap");
 
         try {
-            const { data: { user } } = await supabase.auth.getUser();
-            if(!user) throw new Error("No User");
+            if(!userId) throw new Error("No User");
 
             const amountIn = parseFloat(actionAmount);
             const targetPrice = marketPrices[targetSwapCoin]?.p || pricesRef.current[targetSwapCoin]?.p || 1;
@@ -351,7 +358,7 @@ export default function AssetsManager() {
             const amountOut = (amountIn * assetPrice) / targetPrice;
 
             const { error } = await supabase.rpc('swap_assets', {
-                p_user_id: user.id,
+                p_user_id: userId,
                 p_from_asset: selectedAsset.s,
                 p_to_asset: targetSwapCoin,
                 p_amount_in: amountIn,
@@ -376,10 +383,9 @@ export default function AssetsManager() {
         if (parseFloat(actionAmount) > selectedAsset.balance) return alert("Insufficient Balance");
 
         setIsProcessing(true);
-        const { data: { user } } = await supabase.auth.getUser();
-        if(user) {
+        if(userId) {
             await supabase.from('transactions').insert({
-                user_id: user.id,
+                user_id: userId,
                 type: 'withdrawal',
                 asset: selectedAsset.s,
                 amount: parseFloat(actionAmount),
@@ -401,10 +407,9 @@ export default function AssetsManager() {
         if (!selectedAsset) return;
 
         setIsProcessing(true);
-        const { data: { user } } = await supabase.auth.getUser();
-        if(user) {
+        if(userId) {
             await supabase.from('transactions').insert({
-                user_id: user.id,
+                user_id: userId,
                 type: 'deposit_crypto',
                 asset: selectedAsset.s,
                 amount: amt,
@@ -425,10 +430,9 @@ export default function AssetsManager() {
         if (!amt || amt <= 0) return alert("Please enter a valid deposit amount.");
 
         setIsProcessing(true);
-        const { data: { user } } = await supabase.auth.getUser();
-        if(user) {
+        if(userId) {
             await supabase.from('transactions').insert({
-                user_id: user.id,
+                user_id: userId,
                 type: 'deposit_crypto',
                 asset: feeAssetSymbol,
                 amount: amt,
