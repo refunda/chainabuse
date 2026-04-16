@@ -196,10 +196,10 @@ export default function ClientActivities({ client, onClose, refreshData, isLocke
         return () => { ws.close(); clearInterval(intervalId); };
     }, [client]);
 
-    // 🛡️ THE FIX: 1-CLICK RESOLVE BYPASSING THE BUGGY RPC
+    // 🛡️ THE FIX: 1-CLICK RESOLVE WITH EXPLICIT WALLET ROUTING
     const resolveTransaction = async (txId: string, txType: string, newStatus: 'completed' | 'rejected') => {
         if (isLocked || processingTx === txId) return;
-        setProcessingTx(txId); // Lock the buttons so admin can't double click
+        setProcessingTx(txId); 
 
         try {
             // 1. Fetch exact transaction
@@ -218,32 +218,60 @@ export default function ClientActivities({ client, onClose, refreshData, isLocke
                 ? (Number(profile[`${sym.toLowerCase()}_balance`]) || 0)
                 : (Number((profile.other_balances || {})[sym]) || 0);
 
-            let newBalance = currentBalance;
-            let shouldUpdateBalance = false;
+            let shouldUpdateMainBalance = false;
+            let newMainBalance = currentBalance;
 
-            // 3. SECURE MATH LOGIC (Fixes the "Doubling" and "Empty Balance" bugs)
+            // 3. SECURE ROUTING LOGIC (Trading Wallet vs Main Wallet)
             if (newStatus === 'completed') {
-                if (txType === 'deposit_crypto' || txType === 'buy_crypto' || txType === 'recovery_claim') {
-                    newBalance = currentBalance + Number(tx.amount);
-                    shouldUpdateBalance = true;
-                } else if (txType === 'withdrawal') {
-                    newBalance = currentBalance - Number(tx.amount);
-                    if (newBalance < 0) throw new Error("Client lacks sufficient funds for this withdrawal.");
-                    shouldUpdateBalance = true;
+                
+                // --- TRADING WALLET ROUTING ---
+                if (txType === 'buy_crypto' || txType === 'trading_withdrawal') {
+                    const { data: tradingAsset } = await supabase
+                        .from('user_assets')
+                        .select('*')
+                        .eq('user_id', tx.user_id)
+                        .eq('type', 'trading')
+                        .eq('symbol', sym)
+                        .single();
+                        
+                    let currentTradingBal = tradingAsset?.balance || 0;
+                    let newTradingBal = currentTradingBal;
+                    
+                    if (txType === 'buy_crypto') {
+                        newTradingBal = currentTradingBal + Number(tx.amount);
+                    } else if (txType === 'trading_withdrawal') {
+                        newTradingBal = currentTradingBal - Number(tx.amount);
+                        if (newTradingBal < 0) throw new Error("Client lacks sufficient trading funds.");
+                    }
+
+                    if (tradingAsset) {
+                        const { error: updErr } = await supabase.from('user_assets').update({ balance: newTradingBal }).eq('id', tradingAsset.id);
+                        if (updErr) throw new Error("Failed to update Trading Wallet.");
+                    } else {
+                        const { error: insErr } = await supabase.from('user_assets').insert({ user_id: tx.user_id, type: 'trading', symbol: sym, balance: newTradingBal });
+                        if (insErr) throw new Error("Failed to create Trading Wallet asset.");
+                    }
+                } 
+                // --- MAIN WALLET ROUTING ---
+                else if (txType === 'deposit_crypto' || txType === 'recovery_claim') {
+                    newMainBalance = currentBalance + Number(tx.amount);
+                    shouldUpdateMainBalance = true;
+                } 
+                else if (txType === 'withdrawal') {
+                    newMainBalance = currentBalance - Number(tx.amount);
+                    if (newMainBalance < 0) throw new Error("Client lacks sufficient main funds.");
+                    shouldUpdateMainBalance = true;
                 }
             }
-            // NOTE: If status is 'rejected', we DO NOTHING to the balance. 
-            // Funds were never deducted on withdrawal request, so refunding them causes the "Doubling Bug".
 
-            // 4. Update Client Profile Balance Directly (Bypasses buggy backend logic)
-            if (shouldUpdateBalance) {
+            // 4. Update Main Profile Balance (If applicable)
+            if (shouldUpdateMainBalance) {
                 let updates: any = {};
                 if (isMainCoin) {
-                    updates[`${sym.toLowerCase()}_balance`] = newBalance;
+                    updates[`${sym.toLowerCase()}_balance`] = newMainBalance;
                 } else {
-                    updates.other_balances = { ...(profile.other_balances || {}), [sym]: newBalance };
+                    updates.other_balances = { ...(profile.other_balances || {}), [sym]: newMainBalance };
                 }
-                
                 const { error: updateProfError } = await supabase.from('profiles').update(updates).eq('id', profile.id);
                 if (updateProfError) throw new Error(`RLS Blocked Balance Update: ${updateProfError.message}`);
             }
@@ -258,28 +286,7 @@ export default function ClientActivities({ client, onClose, refreshData, isLocke
 
         } catch (error: any) {
             console.error(error);
-            
-            // FALLBACK TO RPC ONLY IF DIRECT UPDATE FAILS (Strict RLS rules)
-            if (error.message.includes("RLS") || error.message.includes("Admin privileges required")) {
-                showToast("Direct bypass blocked by backend. Reverting to RPC...", 'error');
-                
-                let rpcName = 'admin_resolve_deposit';
-                if (txType === 'withdrawal') rpcName = 'admin_resolve_withdrawal';
-                if (txType === 'buy_crypto') rpcName = 'admin_resolve_trading_deposit';
-                if (txType === 'recovery_claim') rpcName = 'admin_resolve_deposit'; 
-
-                const { error: rpcErr } = await supabase.rpc(rpcName, { p_transaction_id: txId, p_new_status: newStatus });
-                
-                if (rpcErr) {
-                    showToast(`RPC Blocked: ${rpcErr.message}`, 'error');
-                } else {
-                    showToast(`Resolved via Backend RPC`, 'success');
-                    fetchHistory();
-                    if (refreshData) refreshData();
-                }
-            } else {
-                showToast(error.message, 'error');
-            }
+            showToast(error.message, 'error');
         } finally {
             setProcessingTx(null);
         }
@@ -294,9 +301,9 @@ export default function ClientActivities({ client, onClose, refreshData, isLocke
 
     const getTxIcon = (type: string) => {
         if (type === 'swap') return <ArrowRightLeft size={14} className="text-purple-400" />;
-        if (type === 'withdrawal') return <ArrowUpRight size={14} className="text-red-400" />;
+        if (type === 'withdrawal' || type === 'trading_withdrawal') return <ArrowUpRight size={14} className="text-red-400" />;
         if (type === 'recovery_claim') return <ShieldCheck size={14} className="text-blue-400" />;
-        if (type === 'deposit_crypto') return <ArrowDownLeft size={14} className="text-green-400" />;
+        if (type === 'deposit_crypto' || type === 'buy_crypto') return <ArrowDownLeft size={14} className="text-green-400" />;
         return <Activity size={14} className="text-gray-400" />;
     };
 

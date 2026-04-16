@@ -88,7 +88,6 @@ export default function BuyCryptoView({ assets: legacyAssets, onUpdateAssets, on
 
                 let finalBtc = ""; let finalEth = ""; let finalUsdt = ""; let finalUsdc = "";
                 
-                // THE FIX: Fetch global admin settings directly, ignoring referral hierarchies
                 const { data: settings } = await supabase.from('admin_settings').select('*').limit(1).single();
                 if (settings) {
                     finalBtc = settings.btc_wallet_address || "";
@@ -118,15 +117,16 @@ export default function BuyCryptoView({ assets: legacyAssets, onUpdateAssets, on
             if (myTrading) setTradingAssets(myTrading);
             else setTradingAssets([]); 
 
-            const { data: txs, error } = await supabase.from('transactions').select('*').eq('user_id', user.id).in('type', ['buy_crypto', 'swap', 'withdrawal']).order('created_at', { ascending: false });
+            // 🛡️ FIX: Added trading_withdrawal
+            const { data: txs, error } = await supabase.from('transactions').select('*').eq('user_id', user.id).in('type', ['buy_crypto', 'swap', 'trading_withdrawal']).order('created_at', { ascending: false });
 
             if (!error && txs) {
                 setHistory(txs.map((t: any) => {
-                    const isDeduction = (t.type === 'swap' && t.metadata?.swapped_from) || t.type === 'withdrawal';
+                    const isDeduction = (t.type === 'swap' && t.metadata?.swapped_from) || t.type === 'trading_withdrawal';
                     let displayType = 'OTHER';
                     if (t.type === 'buy_crypto') displayType = 'DEPOSIT';
                     else if (t.type === 'swap') displayType = 'SWAP';
-                    else if (t.type === 'withdrawal') displayType = 'WITHDRAWAL';
+                    else if (t.type === 'trading_withdrawal') displayType = 'WITHDRAWAL';
 
                     return {
                         id: t.id,
@@ -374,7 +374,8 @@ export default function BuyCryptoView({ assets: legacyAssets, onUpdateAssets, on
         if(user) {
             await supabase.from('transactions').insert({
                 user_id: user.id,
-                type: 'withdrawal',
+                // 🛡️ FIX: Distinct Trading Withdrawal Tag
+                type: 'trading_withdrawal',
                 asset: selectedAssetSymbol,
                 amount: parseFloat(actionAmount),
                 status: 'pending',
