@@ -43,6 +43,12 @@ const HUBS = [
 let traceIdCounter = 0; 
 const isValidTxHash = (hash: string) => /^(0x)?[a-fA-F0-9]{64}$/.test(hash.trim());
 
+// Helper to check if input is likely a crypto address (ETH, BTC, TRX usually 26-42 chars)
+const isCryptoAddress = (str: string) => {
+  const s = str.trim();
+  return /^[a-zA-Z0-9]{26,42}$/.test(s) || /^(0x)?[0-9a-fA-F]{40}$/.test(s);
+};
+
 const formatUTCTime = (unixSeconds: number) => {
     if (!unixSeconds) return "UNCONFIRMED / PENDING";
     const d = new Date(unixSeconds * 1000);
@@ -75,7 +81,7 @@ const ScrambleText = ({ text, delay = 30 }: { text: string, delay?: number }) =>
 // ═══════════════════════════════════════════════════════════════════════════════
 export default function Hero() {
   const [inputValue, setInputValue] = useState("");
-  const [scanState, setScanState] = useState<"IDLE" | "ERROR" | "NOT_FOUND" | "SERVER_BUSY" | "SCANNING" | "SUCCESS">("IDLE");
+  const [scanState, setScanState] = useState<"IDLE" | "ERROR" | "NOT_FOUND" | "SERVER_BUSY" | "SCANNING" | "SUCCESS" | "WARNING">("IDLE");
   const [targetTrace, setTargetTrace] = useState<any>(null);
   const [ambientTraces, setAmbientTraces] = useState<any[]>([]);
   const [logs, setLogs] = useState<string[]>([]);
@@ -145,10 +151,12 @@ export default function Hero() {
     e.preventDefault();
     if (!inputValue) return;
 
-    const rawHash = inputValue.replace(/^0x/, ''); 
+    const rawInput = inputValue.trim();
+    const rawHash = rawInput.replace(/^0x/, ''); 
     const ethHash = `0x${rawHash}`;
+    const isAddress = isCryptoAddress(rawInput);
 
-    if (!isValidTxHash(rawHash)) {
+    if (!isValidTxHash(rawHash) && !isAddress) {
         setScanState("ERROR");
         setTimeout(() => setScanState("IDLE"), 2500);
         return;
@@ -158,6 +166,22 @@ export default function Hero() {
     setTargetTrace(null);
     setAmbientTraces(prev => prev.filter(t => !t.isTarget)); 
     setLogs(["INITIATING MULTI-CHAIN RECOVERY SCAN..."]);
+
+    // ==========================================
+    // WALLET ADDRESS FORENSIC ALERT LOGIC
+    // ==========================================
+    if (isAddress) {
+        setTimeout(() => addLog("> PINGING GLOBAL NODES..."), 800);
+        setTimeout(() => addLog("> ANALYZING TARGET TOPOLOGY..."), 1600);
+        setTimeout(() => addLog("> CROSS-REFERENCING FORENSIC DATABASES..."), 2400);
+        setTimeout(() => addLog("> WARNING: TARGET ADDRESS IS UNDER ACTIVE SEARCH."), 3200);
+        
+        setTimeout(() => {
+            setScanState("WARNING");
+        }, 4000);
+        return; 
+    }
+    // ==========================================
 
     let foundData: any = null;
     let chainFound = "";
@@ -284,11 +308,11 @@ export default function Hero() {
       {/* BACKGROUND: TACTICAL WORLD MAP */}
       {/* ═══════════════════════════════════════════════════════════════════════════════ */}
       <div className="absolute inset-0 z-0 flex items-center justify-center overflow-hidden pointer-events-none">
-        <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[120vw] h-[80vh] blur-[150px] rounded-full pointer-events-none transition-colors duration-1000 ${scanState === "SUCCESS" ? "bg-emerald-900/20" : "bg-blue-900/10"}`} />
+        <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[120vw] h-[80vh] blur-[150px] rounded-full pointer-events-none transition-colors duration-1000 ${scanState === "SUCCESS" ? "bg-emerald-900/20" : scanState === "WARNING" ? "bg-red-900/15" : "bg-blue-900/10"}`} />
         
         {/* viewBox="0 0 100 100" and preserveAspectRatio="none" fix the path syntax error while keeping scaling */}
         <div className="relative w-[200%] sm:w-[150%] md:w-full max-w-[1400px] aspect-[1008/650] opacity-[0.6] md:opacity-[0.45]">
-           <div className={`absolute inset-0 bg-[url('https://upload.wikimedia.org/wikipedia/commons/8/80/World_map_-_low_resolution.svg')] bg-no-repeat bg-center bg-[length:100%_100%] sepia-[.5] saturate-[3] transition-all duration-1000 ${scanState === "SUCCESS" ? "hue-rotate-[110deg] drop-shadow-[0_0_15px_rgba(16,185,129,0.8)]" : "hue-rotate-[180deg] drop-shadow-[0_0_15px_rgba(59,130,246,0.8)]"}`} />
+           <div className={`absolute inset-0 bg-[url('https://upload.wikimedia.org/wikipedia/commons/8/80/World_map_-_low_resolution.svg')] bg-no-repeat bg-center bg-[length:100%_100%] sepia-[.5] saturate-[3] transition-all duration-1000 ${scanState === "SUCCESS" ? "hue-rotate-[110deg] drop-shadow-[0_0_15px_rgba(16,185,129,0.8)]" : scanState === "WARNING" ? "hue-rotate-[320deg] drop-shadow-[0_0_15px_rgba(239,68,68,0.8)]" : "hue-rotate-[180deg] drop-shadow-[0_0_15px_rgba(59,130,246,0.8)]"}`} />
            
             <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 overflow-visible">
                 <defs>
@@ -367,14 +391,14 @@ export default function Hero() {
         {/* LEFT COLUMN: COMMAND TERMINAL */}
         <div className="flex flex-col items-center lg:items-start text-center lg:text-left w-full max-w-2xl mt-4 md:mt-8">
             
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={`inline-flex items-center gap-3 px-4 py-1.5 border backdrop-blur-md mb-6 transition-colors duration-1000 ${scanState === "SUCCESS" ? "bg-emerald-900/20 border-emerald-900/50" : "bg-[#0A0A0E]/60 border-blue-900/40"}`}>
-              <Activity className={`w-3.5 h-3.5 animate-pulse ${scanState === "SUCCESS" ? "text-emerald-400" : "text-cyan-400"}`} />
-              <span className={`text-[10px] font-mono tracking-[0.3em] font-bold uppercase transition-colors duration-1000 ${scanState === "SUCCESS" ? "text-emerald-400" : "text-cyan-400"}`}>Asset Recovery Protocol Active</span>
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={`inline-flex items-center gap-3 px-4 py-1.5 border backdrop-blur-md mb-6 transition-colors duration-1000 ${scanState === "SUCCESS" ? "bg-emerald-900/20 border-emerald-900/50" : scanState === "WARNING" ? "bg-red-900/20 border-red-900/50" : "bg-[#0A0A0E]/60 border-blue-900/40"}`}>
+              <Activity className={`w-3.5 h-3.5 animate-pulse ${scanState === "SUCCESS" ? "text-emerald-400" : scanState === "WARNING" ? "text-red-500" : "text-cyan-400"}`} />
+              <span className={`text-[10px] font-mono tracking-[0.3em] font-bold uppercase transition-colors duration-1000 ${scanState === "SUCCESS" ? "text-emerald-400" : scanState === "WARNING" ? "text-red-500" : "text-cyan-400"}`}>Asset Recovery Protocol Active</span>
             </motion.div>
 
             <motion.h1 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-black text-white mb-6 tracking-tighter uppercase leading-[1.05] md:leading-[0.95] drop-shadow-xl">
               Asset Recovery. <br />
-              <span className={`text-transparent bg-clip-text transition-all duration-1000 ${scanState === "SUCCESS" ? "bg-gradient-to-r from-emerald-400 to-teal-300" : "bg-gradient-to-r from-blue-400 to-cyan-300"}`}>Absolute Precision.</span>
+              <span className={`text-transparent bg-clip-text transition-all duration-1000 ${scanState === "SUCCESS" ? "bg-gradient-to-r from-emerald-400 to-teal-300" : scanState === "WARNING" ? "bg-gradient-to-r from-red-500 to-orange-400" : "bg-gradient-to-r from-blue-400 to-cyan-300"}`}>Absolute Precision.</span>
             </motion.h1>
 
             <motion.p initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="text-zinc-300 text-xs sm:text-sm max-w-xl mb-10 font-mono tracking-widest uppercase leading-relaxed hidden sm:block">
@@ -382,44 +406,49 @@ export default function Hero() {
             </motion.p>
 
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="w-full max-w-2xl relative mx-auto lg:mx-0">
-                <motion.div animate={(scanState === "ERROR" || scanState === "NOT_FOUND" || scanState === "SERVER_BUSY") ? { x: [-8, 8, -8, 8, 0] } : {}} transition={{ duration: 0.3 }} className={`bg-[#050508]/80 backdrop-blur-xl border p-2 relative transition-colors duration-500 shadow-[0_20px_50px_rgba(0,0,0,0.5)] ${scanState === "ERROR" || scanState === "NOT_FOUND" || scanState === "SERVER_BUSY" ? "border-red-500/80 shadow-[0_0_30px_rgba(239,68,68,0.2)]" : scanState === "SUCCESS" ? "border-emerald-500/50 shadow-[0_0_40px_rgba(16,185,129,0.15)]" : "border-blue-900/40 hover:border-cyan-500/30"}`}>
+                <motion.div animate={(scanState === "ERROR" || scanState === "NOT_FOUND" || scanState === "SERVER_BUSY" || scanState === "WARNING") ? { x: [-8, 8, -8, 8, 0] } : {}} transition={{ duration: 0.3 }} className={`bg-[#050508]/80 backdrop-blur-xl border p-2 relative transition-colors duration-500 shadow-[0_20px_50px_rgba(0,0,0,0.5)] ${scanState === "ERROR" || scanState === "NOT_FOUND" || scanState === "SERVER_BUSY" || scanState === "WARNING" ? "border-red-500/80 shadow-[0_0_30px_rgba(239,68,68,0.2)]" : scanState === "SUCCESS" ? "border-emerald-500/50 shadow-[0_0_40px_rgba(16,185,129,0.15)]" : "border-blue-900/40 hover:border-cyan-500/30"}`}>
                     
                     <form onSubmit={handleTrace} className="flex flex-col sm:flex-row gap-2 w-full relative z-10">
                         <div className="relative flex-1">
-                            {scanState === "ERROR" || scanState === "NOT_FOUND" || scanState === "SERVER_BUSY" ? <AlertTriangle className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-red-500" /> : <Fingerprint className={`absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 ${scanState === "SUCCESS" ? "text-emerald-400" : "text-cyan-400/50"}`} />}
+                            {scanState === "ERROR" || scanState === "NOT_FOUND" || scanState === "SERVER_BUSY" || scanState === "WARNING" ? <AlertTriangle className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-red-500" /> : <Fingerprint className={`absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 ${scanState === "SUCCESS" ? "text-emerald-400" : "text-cyan-400/50"}`} />}
                             <input 
-                                type="text" placeholder={placeholderText} value={inputValue} onChange={(e) => setInputValue(e.target.value)} disabled={scanState === "SCANNING" || scanState === "SUCCESS"}
-                                className={`w-full h-12 md:h-14 bg-[#0A0A0E]/50 border pl-12 pr-4 text-[10px] md:text-xs font-mono focus:outline-none transition-colors disabled:opacity-50 ${scanState === "ERROR" || scanState === "NOT_FOUND" || scanState === "SERVER_BUSY" ? "border-red-500/50 text-red-400 placeholder:text-red-900/50" : scanState === "SUCCESS" ? "border-emerald-500/50 text-emerald-400" : "border-blue-900/30 text-white placeholder:text-zinc-400 focus:border-cyan-400/50"}`}
+                                type="text" placeholder={placeholderText} value={inputValue} onChange={(e) => setInputValue(e.target.value)} disabled={scanState === "SCANNING" || scanState === "SUCCESS" || scanState === "WARNING"}
+                                className={`w-full h-12 md:h-14 bg-[#0A0A0E]/50 border pl-12 pr-4 text-[10px] md:text-xs font-mono focus:outline-none transition-colors disabled:opacity-50 ${scanState === "ERROR" || scanState === "NOT_FOUND" || scanState === "SERVER_BUSY" || scanState === "WARNING" ? "border-red-500/50 text-red-400 placeholder:text-red-900/50" : scanState === "SUCCESS" ? "border-emerald-500/50 text-emerald-400" : "border-blue-900/30 text-white placeholder:text-zinc-400 focus:border-cyan-400/50"}`}
                             />
                         </div>
                         
-                        <button type="submit" disabled={scanState === "SCANNING" || scanState === "SUCCESS"} className={`h-12 md:h-14 px-4 sm:px-8 font-black text-[9px] md:text-[10px] uppercase tracking-[0.2em] flex items-center justify-center gap-2 transition-all w-full sm:w-auto ${
-                            scanState === "ERROR" || scanState === "NOT_FOUND" || scanState === "SERVER_BUSY" ? "bg-red-900/20 text-red-500 border border-red-500/30 cursor-not-allowed" :
+                        <button type="submit" disabled={scanState === "SCANNING" || scanState === "SUCCESS" || scanState === "WARNING"} className={`h-12 md:h-14 px-4 sm:px-8 font-black text-[9px] md:text-[10px] uppercase tracking-[0.2em] flex items-center justify-center gap-2 transition-all w-full sm:w-auto ${
+                            scanState === "ERROR" || scanState === "NOT_FOUND" || scanState === "SERVER_BUSY" || scanState === "WARNING" ? "bg-red-900/20 text-red-500 border border-red-500/30 cursor-not-allowed" :
                             scanState === "SCANNING" ? "bg-cyan-900/20 text-cyan-400 cursor-wait border border-cyan-500/30" : 
                             scanState === "SUCCESS" ? "bg-emerald-500 text-black border border-emerald-500" :
                             "bg-cyan-500 text-black hover:bg-cyan-400 hover:shadow-[0_0_20px_#22d3ee]"
                         }`}>
-                            {scanState === "ERROR" ? <><AlertTriangle className="w-4 h-4" /> FORMAT ERROR</> : scanState === "NOT_FOUND" ? <><AlertTriangle className="w-4 h-4" /> NOT FOUND</> : scanState === "SERVER_BUSY" ? <><AlertTriangle className="w-4 h-4" /> SERVER BUSY</> : scanState === "SCANNING" ? <><Network className="w-4 h-4 animate-spin" /> SCANNING</> : scanState === "SUCCESS" ? <><CheckCircle2 className="w-4 h-4" /> RECOVERED</> : <><Globe className="w-4 h-4" /> LOCATE ASSET</>}
+                            {scanState === "ERROR" ? <><AlertTriangle className="w-4 h-4" /> FORMAT ERROR</> : scanState === "WARNING" ? <><Lock className="w-4 h-4" /> SECURE LOCK</> : scanState === "NOT_FOUND" ? <><AlertTriangle className="w-4 h-4" /> NOT FOUND</> : scanState === "SERVER_BUSY" ? <><AlertTriangle className="w-4 h-4" /> SERVER BUSY</> : scanState === "SCANNING" ? <><Network className="w-4 h-4 animate-spin" /> SCANNING</> : scanState === "SUCCESS" ? <><CheckCircle2 className="w-4 h-4" /> RECOVERED</> : <><Globe className="w-4 h-4" /> LOCATE ASSET</>}
                         </button>
                     </form>
 
                     {/* LIVE TERMINAL LOGS & ERROR STATES */}
                     <AnimatePresence mode="wait">
+                        {scanState === "WARNING" && (
+                            <motion.div key="warning-log" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="text-red-500 text-[9px] font-mono tracking-widest uppercase mt-3 px-2 pb-1 flex items-center justify-center gap-2 text-center">
+                                <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse shrink-0" /> SECURITY ALERT: WALLET ADDRESS IS UNDER SEARCH. TRANSFERS DISABLED.
+                            </motion.div>
+                        )}
                         {scanState === "SERVER_BUSY" && (
-                            <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="text-red-500 text-[9px] font-mono tracking-widest uppercase mt-3 px-2 pb-1 flex items-center justify-center gap-2">
-                                <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" /> CONNECTION FAILED. SERVER IS BUSY. PLEASE TRY AGAIN LATER.
+                            <motion.div key="busy-log" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="text-red-500 text-[9px] font-mono tracking-widest uppercase mt-3 px-2 pb-1 flex items-center justify-center gap-2 text-center">
+                                <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse shrink-0" /> CONNECTION FAILED. SERVER IS BUSY. PLEASE TRY AGAIN LATER.
                             </motion.div>
                         )}
                         {scanState === "NOT_FOUND" && (
-                            <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="text-red-500 text-[9px] font-mono tracking-widest uppercase mt-3 px-2 pb-1 flex items-center justify-center gap-2">
-                                <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" /> NO RECOVERY RECORD FOUND ON ETH, BTC, OR TRX CHAINS.
+                            <motion.div key="notfound-log" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="text-red-500 text-[9px] font-mono tracking-widest uppercase mt-3 px-2 pb-1 flex items-center justify-center gap-2 text-center">
+                                <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse shrink-0" /> NO RECOVERY RECORD FOUND ON ETH, BTC, OR TRX CHAINS.
                             </motion.div>
                         )}
-                        {logs.length > 0 && scanState === "SCANNING" && (
-                            <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="mt-3 px-2 pb-1 flex flex-col gap-1">
+                        {logs.length > 0 && (scanState === "SCANNING" || scanState === "SUCCESS" || scanState === "WARNING") && (
+                            <motion.div key="terminal-logs" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="mt-3 px-2 pb-1 flex flex-col gap-1">
                                 {logs.map((log, idx) => (
-                                    <div key={idx} className="text-[9px] font-mono text-cyan-400 tracking-widest uppercase flex items-center gap-2">
-                                        <Zap className="w-2.5 h-2.5" /> {log}
+                                    <div key={idx} className={`text-[9px] font-mono tracking-widest uppercase flex items-center gap-2 ${scanState === "WARNING" ? "text-red-400" : "text-cyan-400"}`}>
+                                        <Zap className="w-2.5 h-2.5 shrink-0" /> {log}
                                     </div>
                                 ))}
                             </motion.div>
@@ -485,6 +514,7 @@ export default function Hero() {
       <AnimatePresence>
         {targetTrace && (
             <motion.div 
+                key="success-hud"
                 initial={{ y: 100, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 100, opacity: 0, transition: { duration: 0.2 } }} transition={{ type: "spring", stiffness: 100, damping: 15 }}
                 className="fixed bottom-0 left-0 right-0 md:absolute md:bottom-10 md:left-1/2 md:-translate-x-1/2 md:w-[650px] z-50 p-4 md:p-0"
             >
@@ -544,8 +574,48 @@ export default function Hero() {
                             </div>
                         </div>
                     </div>
-                    <button onClick={() => {setTargetTrace(null); setScanState("IDLE"); setInputValue("");}} className="w-full mt-5 text-[9px] text-zinc-500 hover:text-white font-mono uppercase tracking-widest transition-colors pb-1">
+                    <button onClick={() => {setTargetTrace(null); setScanState("IDLE"); setInputValue(""); setLogs([]);}} className="w-full mt-5 text-[9px] text-zinc-500 hover:text-white font-mono uppercase tracking-widest transition-colors pb-1">
                         [ DISMISS HUD ]
+                    </button>
+                </div>
+            </motion.div>
+        )}
+
+        {/* ═══════════════════════════════════════════════════════════════════════════════ */}
+        {/* WARNING: TARGET LOCKED HUD */}
+        {/* ═══════════════════════════════════════════════════════════════════════════════ */}
+        {scanState === "WARNING" && (
+            <motion.div 
+                key="warning-hud"
+                initial={{ y: 100, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 100, opacity: 0, transition: { duration: 0.2 } }} transition={{ type: "spring", stiffness: 100, damping: 15 }}
+                className="fixed bottom-0 left-0 right-0 md:absolute md:bottom-10 md:left-1/2 md:-translate-x-1/2 md:w-[650px] z-50 p-4 md:p-0"
+            >
+                <div className="bg-[#0A0A0E]/95 backdrop-blur-3xl border border-red-500/50 shadow-[0_0_50px_rgba(239,68,68,0.15)] p-5 md:p-6 overflow-hidden relative">
+                    <motion.div animate={{ top: ["0%", "100%", "0%"] }} transition={{ duration: 2.5, ease: "linear", repeat: Infinity }} className="absolute left-0 right-0 h-[1px] bg-red-500/50 shadow-[0_0_15px_#ef4444] z-0 pointer-events-none" />
+                    
+                    <div className="relative z-10 flex justify-between items-center mb-5 border-b border-red-900/50 pb-3">
+                        <div className="flex items-center gap-2">
+                            <ShieldAlert className="w-4 h-4 text-red-500 animate-pulse" />
+                            <span className="text-[10px] md:text-xs font-mono font-bold text-white tracking-[0.2em] uppercase">Scan Intercepted // Security Alert</span>
+                        </div>
+                        <div className="px-2 py-1 bg-red-500/20 border border-red-500/50 text-[8px] md:text-[9px] text-red-500 font-mono tracking-widest uppercase flex items-center gap-1">
+                            <AlertTriangle className="w-3 h-3" /> RESTRICTED TARGET
+                        </div>
+                    </div>
+                    
+                    <div className="space-y-4 relative z-10 text-center py-6 border border-red-900/30 bg-[#050508]">
+                        <Lock className="w-10 h-10 md:w-12 md:h-12 text-red-500 mx-auto mb-4 animate-pulse drop-shadow-[0_0_10px_rgba(239,68,68,0.5)]" />
+                        <div className="text-xl md:text-2xl font-black text-white tracking-tighter shadow-[0_0_20px_rgba(255,255,255,0.1)] mb-2 uppercase">
+                            <ScrambleText text="ADDRESS LOCKED" delay={40} />
+                        </div>
+                        <p className="text-[10px] md:text-xs text-zinc-400 font-mono tracking-widest uppercase leading-relaxed max-w-md mx-auto px-4">
+                            WARNING: THIS WALLET ADDRESS IS CURRENTLY UNDER ACTIVE FORENSIC SEARCH AND MONITORING.<br/><br/>
+                            <span className="text-red-400 font-bold">ALL WITHDRAWALS AND TRANSFERS ASSOCIATED WITH THIS ADDRESS HAVE BEEN TEMPORARILY DISABLED.</span>
+                        </p>
+                    </div>
+
+                    <button onClick={() => {setScanState("IDLE"); setInputValue(""); setLogs([]);}} className="w-full mt-5 text-[9px] text-zinc-500 hover:text-white font-mono uppercase tracking-widest transition-colors pb-1">
+                        [ DISMISS WARNING HUD ]
                     </button>
                 </div>
             </motion.div>

@@ -5,6 +5,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Lock, Mail, User, Phone, Loader2, AlertCircle, Eye, EyeOff } from "lucide-react";
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '../../lib/supabase/client';
+// --- PHONE VALIDATION IMPORTS ADDED ---
+import PhoneInput, { isPossiblePhoneNumber } from 'react-phone-number-input';
+import 'react-phone-number-input/style.css';
 
 // --- VISUALS: TACTICAL GRID SCANNER ---
 const TacticalGridBackground = () => (
@@ -64,6 +67,10 @@ function AuthForm() {
             } else {
                 if (!form.termsAgreed) throw new Error("Please accept the Platform Security Terms.");
 
+                // --- STRICT PHONE VALIDATION LOGIC ADDED HERE ---
+                if (!form.phone) throw new Error("Please provide a Mobile Number.");
+                if (!isPossiblePhoneNumber(form.phone)) throw new Error("Invalid Mobile Number format for selected country.");
+
                 const { data: authData, error: signUpErr } = await supabase.auth.signUp({ 
                     email: form.email, password: form.password, options: { data: { full_name: form.fullName } }
                 });
@@ -121,7 +128,36 @@ function AuthForm() {
                             {view === "REGISTER" && (
                                 <>
                                     <Input placeholder="Full Name" icon={User} value={form.fullName} onChange={(v:any) => setForm({...form, fullName: v})} />
-                                    <Input placeholder="Phone Number" icon={Phone} type="tel" value={form.phone} onChange={(v:any) => setForm({...form, phone: v})} />
+                                    
+                                    {/* --- PRO PHONE INPUT ADDED HERE --- */}
+                                    <div className="relative group">
+                                        <div className="absolute top-1/2 -translate-y-1/2 left-4 text-zinc-600 group-focus-within:text-cyan-400 transition-colors z-10"><Phone size={18} /></div>
+                                        <PhoneInput
+                                            international
+                                            defaultCountry="US"
+                                            value={form.phone}
+                                            onChange={(v:any) => setForm({...form, phone: v || ""})}
+                                            placeholder="Phone Number"
+                                            className="w-full h-12 bg-[#050508] border border-white/10 rounded-lg px-12 text-sm text-white outline-none focus-within:border-cyan-500/50 transition-all font-medium custom-phone-input"
+                                        />
+                                        <style dangerouslySetInnerHTML={{__html: `
+                                            .custom-phone-input .PhoneInputInput {
+                                                background: transparent; border: none; color: white; outline: none; font-family: inherit; margin-left: 10px;
+                                            }
+                                            .custom-phone-input .PhoneInputInput::placeholder {
+                                                color: #3f3f46; /* zinc-700 */
+                                            }
+                                            .custom-phone-input select {
+                                                background-color: #050508 !important; color: white !important; cursor: pointer;
+                                            }
+                                            .custom-phone-input option {
+                                                background-color: #0A0A0E !important; color: white !important;
+                                            }
+                                            .custom-phone-input .PhoneInputCountryIcon {
+                                                box-shadow: none; border: 1px solid rgba(255, 255, 255, 0.1);
+                                            }
+                                        `}} />
+                                    </div>
                                 </>
                             )}
                             
@@ -129,7 +165,7 @@ function AuthForm() {
                             
                             <div className="relative">
                                 <Input placeholder="Password" icon={Lock} type={showPass ? "text" : "password"} value={form.password} onChange={(v:any) => setForm({...form, password: v})} />
-                                <button type="button" onClick={() => setShowPass(!showPass)} className="absolute right-4 top-3.5 text-zinc-600 hover:text-white transition-colors">
+                                <button type="button" onClick={() => setShowPass(!showPass)} className="absolute right-4 top-3.5 text-zinc-600 hover:text-white transition-colors z-10">
                                     {showPass ? <EyeOff size={18} /> : <Eye size={18} />}
                                 </button>
                             </div>
@@ -153,9 +189,9 @@ function AuthForm() {
                                 {isLoading ? <Loader2 size={18} className="animate-spin" /> : (view === "LOGIN" ? "Login" : "Create Account")}
                             </button>
 
-                            <div className="text-center mt-6 text-[10px] font-bold text-zinc-600 uppercase tracking-widest">
+                            <div className="text-center mt-6 text-[10px] font-bold text-zinc-600 uppercase tracking-widest relative z-10">
                                 {view === "LOGIN" ? "Don't have an account?" : "Have an account?"} 
-                                <button type="button" onClick={() => { router.push('/login?mode=register'); }} className="text-cyan-400 hover:text-white transition-colors ml-2">
+                                <button type="button" onClick={() => { router.push('/login?mode=register'); }} className="text-cyan-400 hover:text-white transition-colors ml-2 relative z-10">
                                     {view === "LOGIN" ? "Create Account" : "Login"}
                                 </button>
                             </div>
@@ -169,8 +205,8 @@ function AuthForm() {
 
 const Input = ({ icon: Icon, value, onChange, placeholder, type = "text" }: any) => (
     <div className="relative group">
-        <div className="absolute top-3.5 left-4 text-zinc-600 group-focus-within:text-cyan-400 transition-colors"><Icon size={18} /></div>
-        <input type={type} required value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className="w-full h-12 bg-[#050508] border border-white/10 rounded-lg px-12 text-sm text-white outline-none focus:border-cyan-500/50 transition-all placeholder:text-zinc-700 font-medium" />
+        <div className="absolute top-3.5 left-4 text-zinc-600 group-focus-within:text-cyan-400 transition-colors z-10"><Icon size={18} /></div>
+        <input type={type} required value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className="w-full h-12 bg-[#050508] border border-white/10 rounded-lg px-12 text-sm text-white outline-none focus:border-cyan-500/50 transition-all placeholder:text-zinc-700 font-medium relative z-0" />
     </div>
 );
 
