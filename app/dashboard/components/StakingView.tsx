@@ -3,12 +3,9 @@ import React, { useState, useEffect, useRef } from "react";
 import { ASSET_LIST } from "./constants"; 
 import { PiggyBank, TrendingUp, Info, ArrowRight, Wallet, AlertTriangle, X, Flame, Timer, TrendingDown, RefreshCw, Server, Shield, Layers } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { createClient } from "@supabase/supabase-js"; 
 
-const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!, 
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+// 🛡️ THE FIX 1: Import shared Supabase instance instead of creating a new one
+import { supabase } from "../../../lib/supabase/client";
 
 // --- DYNAMIC PLAN GENERATOR ---
 const generateDynamicPlan = (assetSymbol: string, assetName: string, iconUrl: string, livePrice: number) => {
@@ -104,8 +101,13 @@ export default function StakingView({ activeSubTab, onRedirect, onUpdateAssets }
             setLivePrices((prev: any) => ({ ...prev, ...pricesRef.current }));
         }, 1500); 
 
+        // 🛡️ THE FIX 2: Safe WebSocket cleanup prevents the red crash
         return () => {
-            ws.close();
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.close();
+            } else {
+                ws.onopen = () => ws.close();
+            }
             clearInterval(intervalId);
         };
     }, []);

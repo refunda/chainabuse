@@ -190,7 +190,8 @@ function AuthForm() {
 
                             <div className="text-center mt-6 text-[10px] font-bold text-zinc-600 uppercase tracking-widest relative z-10">
                                 {view === "LOGIN" ? "Don't have an account?" : "Have an account?"} 
-                                <button type="button" onClick={() => { router.push('/login?mode=register'); }} className="text-cyan-400 hover:text-white transition-colors ml-2 relative z-10">
+                                {/* 🛡️ THE FIX: Replaced router.push with instant local state switch */}
+                                <button type="button" onClick={() => { setView(view === "LOGIN" ? "REGISTER" : "LOGIN"); setError(null); }} className="text-cyan-400 hover:text-white transition-colors ml-2 relative z-10">
                                     {view === "LOGIN" ? "Create Account" : "Login"}
                                 </button>
                             </div>

@@ -7,13 +7,9 @@ import {
     ChevronDown, Shield, Server, Wallet, Activity
 } from "lucide-react";
 import { ASSET_LIST } from "./constants"; 
-import { createClient } from "@supabase/supabase-js";
 
-// Initialize Supabase
-const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+// 🛡️ THE FIX: Import the global shared Supabase instance instead of creating a new one
+import { supabase } from "../../../lib/supabase/client";
 
 // 🛡️ THE FIX: 100% Crash-Proof Math Formatter
 const AnimatedNumber = ({ value, prefix = "", toFixed = 2 }: any) => {
@@ -42,7 +38,6 @@ const CURRENCY_INFO: Record<string, { name: string, flag: string, symbol: string
 
 export default function AssetsManager() {
     // --- STATE ---
-    // 🛡️ THE FIX: Store the authenticated user ID locally to prevent token race conditions
     const [userId, setUserId] = useState<string | null>(null);
 
     const [modal, setModal] = useState<string | null>(null); 
@@ -117,7 +112,6 @@ export default function AssetsManager() {
 
     // --- FETCH DATA ---
     const fetchData = async () => {
-        // 🛡️ THE FIX: Use the local state variable instead of awaiting the Auth token again
         if (!userId) return;
 
         const { data: profile } = await supabase.from('profiles').select('*').eq('id', userId).single();
@@ -163,7 +157,6 @@ export default function AssetsManager() {
                 if (['BTC', 'ETH', 'USDT', 'USDC'].includes(sym)) {
                     newBalances[sym] = Number(profile[`${sym.toLowerCase()}_balance`]) || 0;
                 } else {
-                    // Extract custom coins seamlessly
                     newBalances[sym] = Number(otherVault[sym]) || 0;
                 }
             });
@@ -226,7 +219,7 @@ export default function AssetsManager() {
         setupRealtime();
 
         return () => { if(activeChannel) supabase.removeChannel(activeChannel); };
-    }, [userId]); // Ensure effect runs when userId is set
+    }, [userId]); 
 
     useEffect(() => {
         const handleResize = () => setIsMobile(window.innerWidth < 768);
@@ -271,12 +264,17 @@ export default function AssetsManager() {
             setMarketPrices(prev => ({ ...prev, ...pricesRef.current }));
         }, 1500); 
 
+        // 🛡️ THE FIX: Safe WebSocket cleanup
         return () => {
             window.removeEventListener('resize', handleResize);
-            ws.close();
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.close();
+            } else {
+                ws.onopen = () => ws.close();
+            }
             clearInterval(intervalId);
         };
-    }, [userId]); // Dependency on userId to fetch when available
+    }, [userId]); 
 
     const totalValue = portfolio.reduce((acc, item) => acc + item.value, 0);
 

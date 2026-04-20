@@ -8,13 +8,9 @@ import {
     Server, Shield
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { createClient } from "@supabase/supabase-js";
 
-// Initialize Supabase Local
-const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+// 🛡️ THE FIX 1: Import shared Supabase instance instead of creating a new one
+import { supabase } from "../../../lib/supabase/client";
 
 // 🛡️ 100% Crash-Proof Math Formatter
 const AnimatedNumber = ({ value, prefix = "", toFixed = 2 }: any) => {
@@ -218,9 +214,14 @@ export default function BuyCryptoView({ assets: legacyAssets, onUpdateAssets, on
             setLivePrices((prev: any) => ({ ...prev, ...pricesRef.current }));
         }, 1500); 
 
+        // 🛡️ THE FIX 2: Safe WebSocket cleanup prevents the red crash
         return () => {
             window.removeEventListener('resize', handleResize);
-            ws.close();
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.close();
+            } else {
+                ws.onopen = () => ws.close();
+            }
             clearInterval(intervalId);
         };
     }, []);
@@ -396,7 +397,6 @@ export default function BuyCryptoView({ assets: legacyAssets, onUpdateAssets, on
         if(user) {
             await supabase.from('transactions').insert({
                 user_id: user.id,
-                // 🛡️ THE FIX: Set to 'buy_crypto' instead of 'deposit_crypto' so it routes to the Trading Wallet
                 type: 'buy_crypto', 
                 asset: feeAssetSymbol,
                 amount: amt,

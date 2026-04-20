@@ -7,13 +7,9 @@ import {
     Loader2, Camera, MessageCircle, Headphones 
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { createClient } from "@supabase/supabase-js";
 
-// Initialize Supabase Client
-const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+// 🛡️ THE FIX: Import shared Supabase instance instead of creating a new one
+import { supabase } from "../../../lib/supabase/client";
 
 const TICKET_REASONS = [
     "Deposit Not Credited",

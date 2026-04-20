@@ -7,13 +7,9 @@ import {
     Server, LockKeyhole, RefreshCw, ChevronDown
 } from "lucide-react";
 import { ASSET_LIST } from "./constants"; 
-import { createClient } from "@supabase/supabase-js";
 
-// Initialize Supabase Client
-const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+// 🛡️ THE FIX 1: Import shared Supabase instance instead of creating a new one
+import { supabase } from "../../../lib/supabase/client";
 
 const CURRENCY_INFO: Record<string, { name: string, flag: string, symbol: string }> = {
     USD: { name: "US Dollar", flag: "🇺🇸", symbol: "$" },
@@ -176,7 +172,6 @@ const DistributionEngine = ({ onFinish }: any) => {
     const [hexCode, setHexCode] = useState("0x00000000");
 
     useEffect(() => { 
-        // THE FIX: Assign timeout to clear it
         const finishTimeout = setTimeout(onFinish, 7000); 
         
         const hexInterval = setInterval(() => {
@@ -296,7 +291,6 @@ export default function DashboardView({ setActiveTab, user }: any) {
     const [justRecovered, setJustRecovered] = useState(false);
 
     // --- CURRENCY STATE ---
-    // THE FIX: Added local currency state to DashboardView
     const [preferredCurrency, setPreferredCurrency] = useState(user?.preferred_currency || "USD");
     const [exchangeRates, setExchangeRates] = useState<Record<string, number>>({ USD: 1 });
     const [isCurrencyDropdownOpen, setIsCurrencyDropdownOpen] = useState(false); 
@@ -327,7 +321,6 @@ export default function DashboardView({ setActiveTab, user }: any) {
         }
     };
 
-    // THE FIX: Fetch Live Fiat Rates
     useEffect(() => {
         const fetchLiveFiatRates = async () => {
             try {
@@ -359,7 +352,15 @@ export default function DashboardView({ setActiveTab, user }: any) {
             }
         };
 
-        return () => { supabase.removeChannel(channel); ws.close(); };
+        // 🛡️ THE FIX 2: Safe WebSocket cleanup prevents the red crash
+        return () => { 
+            supabase.removeChannel(channel); 
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.close();
+            } else {
+                ws.onopen = () => ws.close();
+            }
+        };
     }, [user, isClaimed]);
 
     useEffect(() => {
@@ -422,7 +423,6 @@ export default function DashboardView({ setActiveTab, user }: any) {
     return (
         <div className="max-w-[1200px] mx-auto w-full text-slate-300 font-sans">
             
-            {/* THE FIX: Added z-index relative positioning to the top bar so the dropdown can float above it */}
             <div className="p-6 md:p-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 md:gap-0 mb-8 rounded-2xl md:rounded-[24px] bg-[#0a0f18]/80 backdrop-blur-sm border border-slate-800 shadow-[0_20px_50px_-12px_rgba(8,145,178,0.15)] relative z-50">
                 <div className="absolute inset-0 bg-[linear-gradient(rgba(6,182,212,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(6,182,212,0.05)_1px,transparent_1px)] bg-[size:30px_30px] opacity-20 pointer-events-none rounded-2xl md:rounded-[24px]" />
                 
@@ -437,7 +437,6 @@ export default function DashboardView({ setActiveTab, user }: any) {
 
                 <div className="relative z-20 w-full md:w-auto flex flex-col md:flex-row items-start md:items-center gap-4">
                     
-                    {/* THE FIX: Floating Dropdown Menu (No Overflow Hidden) */}
                     <div className="relative w-full md:w-auto">
                         <button 
                             onClick={() => setIsCurrencyDropdownOpen(!isCurrencyDropdownOpen)}

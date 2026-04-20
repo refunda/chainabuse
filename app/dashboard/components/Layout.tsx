@@ -7,14 +7,10 @@ import {
 } from "lucide-react"; 
 import { THEME, NAV_ITEMS, ASSET_LIST } from "./constants";
 import { motion, AnimatePresence } from "framer-motion";
-import { createClient } from "@supabase/supabase-js"; 
 import { useRouter } from "next/navigation";       
 
-// Initialize Client Locally
-const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+// 🛡️ THE FIX 1: Import shared Supabase instance instead of creating a new one
+import { supabase } from "../../../lib/supabase/client";
 
 // --- CRYPTO TICKER COMPONENT (PRO MOBILE UPGRADE) ---
 const CryptoTicker = () => {
@@ -62,8 +58,13 @@ const CryptoTicker = () => {
             });
         }, 1000);
 
+        // 🛡️ THE FIX 2: Safe WebSocket cleanup prevents the red crash
         return () => {
-            ws.close();
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.close();
+            } else {
+                ws.onopen = () => ws.close();
+            }
             clearInterval(interval);
         };
     }, []);
@@ -97,7 +98,6 @@ const CryptoTicker = () => {
                     className="flex w-full items-center justify-center gap-2"
                 >
                     {currentBatch.map((coin, i) => (
-                        // THE FIX: Used flex-1 so items evenly share space on mobile
                         <div key={`${coin.s}-${i}`} className="flex-1 flex items-center justify-between gap-1 md:gap-4 bg-slate-900/50 px-2 md:px-3 py-1.5 rounded-lg border border-slate-700/50 overflow-hidden min-w-0 max-w-sm transition-colors">
                             <div className="flex items-center gap-1.5 md:gap-2 shrink-0">
                                 <img src={coin.l} className="w-4 h-4 md:w-5 md:h-5 rounded-full border border-slate-700 shrink-0" alt={coin.s} />
@@ -210,10 +210,8 @@ export default function Layout({ children, activeTab, setActiveTab, user }: any)
         <div className="h-[80px] flex items-center px-5 relative border-b border-slate-800">
             <div className="flex items-center gap-3 overflow-hidden mt-2 w-full justify-center">
                 {isCollapsed && !isMobile ? (
-                    // USES YOUR NEW logo-icon.png EXACTLY AS YOU REQUESTED
                     <img src="/assets/logo-icon.png" alt="Chainabuse Icon" className="h-8 w-auto drop-shadow-[0_0_20px_rgba(6,182,212,0.8)]" />
                 ) : (
-                    // FULL LOGO WITH INTENSE GLOW
                     <img src="/assets/logo.png" alt="Chainabuse" className="max-w-[160px] drop-shadow-[0_0_25px_rgba(6,182,212,0.8)]" />
                 )}
             </div>
