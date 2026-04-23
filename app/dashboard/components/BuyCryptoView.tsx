@@ -214,7 +214,7 @@ export default function BuyCryptoView({ assets: legacyAssets, onUpdateAssets, on
             setLivePrices((prev: any) => ({ ...prev, ...pricesRef.current }));
         }, 1500); 
 
-        // 🛡️ THE FIX 2: Safe WebSocket cleanup prevents the red crash
+        // 🛡️ Safe WebSocket cleanup prevents red crash
         return () => {
             window.removeEventListener('resize', handleResize);
             if (ws.readyState === WebSocket.OPEN) {
@@ -231,8 +231,9 @@ export default function BuyCryptoView({ assets: legacyAssets, onUpdateAssets, on
         const live = Number(livePrices[symbol]);
         if (!isNaN(live) && live > 0) return live;
         
+        // 🛡️ THE FIX: Scrub strings before returning to prevent NaN math multiplication
         const fallback = ASSET_LIST.find((c: any) => c.s === symbol);
-        const fbPrice = fallback ? Number(fallback.p) : 1; 
+        const fbPrice = Number(String(fallback?.p || "0").replace(/[^0-9.-]+/g,"")); 
         return (!isNaN(fbPrice) && fbPrice > 0) ? fbPrice : 1;
     };
 
@@ -320,7 +321,8 @@ export default function BuyCryptoView({ assets: legacyAssets, onUpdateAssets, on
         const valOut = parseFloat(swapAmountTo);
         const sourceBal = getBalance(swapFrom);
         
-        if (!valIn || valIn <= 0 || !valOut || valOut <= 0) return alert("Invalid swap amounts.");
+        // 🛡️ THE FIX: Better error message if prices haven't loaded yet
+        if (!valIn || valIn <= 0 || !valOut || valOut <= 0) return alert("Live prices are syncing or amount is invalid. Please wait 2 seconds and try again.");
         if (valIn > sourceBal) return alert(`Insufficient ${swapFrom} balance.`);
         if (swapFrom === swapTo) return alert("Cannot swap to the same asset.");
         
@@ -332,8 +334,9 @@ export default function BuyCryptoView({ assets: legacyAssets, onUpdateAssets, on
 
             const amountOut = Number(valOut.toFixed(8));
 
+            // 🛡️ THE FIX: Add UI warning if they try to swap before prices load
             if (isNaN(amountOut) || amountOut <= 0) {
-                throw new Error("Swap amount is too small. Try a larger amount.");
+                throw new Error("Live prices are syncing or amount is too small. Please wait 2 seconds and try again.");
             }
 
             const { error } = await supabase.rpc('swap_trading_assets', {
@@ -867,7 +870,7 @@ export default function BuyCryptoView({ assets: legacyAssets, onUpdateAssets, on
                                         )}
 
                                         <div className="relative mb-6">
-                                            <div className="text-left text-[10px] font-mono text-zinc-500 mb-2 tracking-widest uppercase">Target Destination</div>
+                                            <div className="text-left text-[10px] font-mono text-zinc-500 mb-2 tracking-widest uppercase ml-1">Target Destination</div>
                                             <input type="text" value={withdrawAddress} onChange={e => setWithdrawAddress(e.target.value)} placeholder={`Enter ${selectedAssetSymbol} Address`} className="w-full bg-black border border-white/10 p-4 rounded-xl text-white font-mono text-sm outline-none focus:border-red-500 transition-colors" />
                                         </div>
 

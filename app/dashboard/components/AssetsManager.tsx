@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { ASSET_LIST } from "./constants"; 
 
-// 🛡️ THE FIX: Import the global shared Supabase instance instead of creating a new one
+// 🛡️ THE FIX 1: Import shared Supabase instance instead of creating a new one
 import { supabase } from "../../../lib/supabase/client";
 
 // 🛡️ THE FIX: 100% Crash-Proof Math Formatter
@@ -93,14 +93,17 @@ export default function AssetsManager() {
     const portfolio = useMemo(() => {
         return ASSET_LIST.map(coin => {
             const balance = userBalances[coin.s] || 0;
-            const priceInfo = marketPrices[coin.s] || pricesRef.current[coin.s] || { p: 0, c: 0 };
-            const finalPrice = (coin.s === "USDT" || coin.s === "USDC") ? 1.00 : (priceInfo.p || 0);
+            const priceInfo = marketPrices[coin.s] || pricesRef.current[coin.s];
+            
+            // 🛡️ THE FIX: Safely scrub commas or symbols from fallback prices so they never return NaN
+            const cleanFallback = Number(String(coin.p).replace(/[^0-9.-]+/g,"")) || 0;
+            const finalPrice = (coin.s === "USDT" || coin.s === "USDC") ? 1.00 : (priceInfo?.p || cleanFallback);
 
             return {
                 ...coin,
                 balance: balance,
                 p: finalPrice,
-                c: priceInfo.c,
+                c: priceInfo?.c || 0,
                 value: balance * finalPrice
             };
         }).sort((a, b) => b.value - a.value); 
@@ -301,7 +304,8 @@ export default function AssetsManager() {
 
             for (const asset of portfolio) {
                 if (asset.s !== target && asset.balance > 0) {
-                    const targetPrice = marketPrices[target]?.p || pricesRef.current[target]?.p || 1;
+                    const rawTarget = marketPrices[target]?.p || pricesRef.current[target]?.p || ASSET_LIST.find(a => a.s === target)?.p;
+                    const targetPrice = (target === "USDT" || target === "USDC") ? 1 : (Number(String(rawTarget).replace(/[^0-9.-]+/g,"")) || 1);
                     const assetPrice = asset.p || 0;
                     
                     if (targetPrice > 0 && assetPrice > 0) {
@@ -343,17 +347,24 @@ export default function AssetsManager() {
             return;
         }
 
+        const amountIn = parseFloat(actionAmount);
+        
+        // 🛡️ THE FIX: Calculate prices safely and block the swap if the market data hasn't loaded
+        const rawTarget = marketPrices[targetSwapCoin]?.p || pricesRef.current[targetSwapCoin]?.p || ASSET_LIST.find(a => a.s === targetSwapCoin)?.p;
+        const targetPrice = (targetSwapCoin === "USDT" || targetSwapCoin === "USDC") ? 1 : (Number(String(rawTarget).replace(/[^0-9.-]+/g,"")) || 1);
+        const assetPrice = selectedAsset.p || 0;
+        
+        if (assetPrice <= 0) return alert("Market prices are currently syncing. Please wait 2 seconds and try again.");
+        
+        const amountOut = (amountIn * assetPrice) / targetPrice;
+        if (amountOut <= 0) return alert("Swap output is too small. Please increase the amount.");
+
         setIsProcessing(true);
         setProcessStep(1);
         setModal("processing_swap");
 
         try {
             if(!userId) throw new Error("No User");
-
-            const amountIn = parseFloat(actionAmount);
-            const targetPrice = marketPrices[targetSwapCoin]?.p || pricesRef.current[targetSwapCoin]?.p || 1;
-            const assetPrice = selectedAsset.p || 0;
-            const amountOut = (amountIn * assetPrice) / targetPrice;
 
             const { error } = await supabase.rpc('swap_assets', {
                 p_user_id: userId,
@@ -732,262 +743,264 @@ export default function AssetsManager() {
             </div>
 
             {/* --- MODALS (PRO GLASSMORPHISM) --- */}
-            {modal && (
-                <div className="fixed inset-0 bg-slate-950/80 z-[100] flex items-end md:items-center justify-center backdrop-blur-sm p-0 md:p-5">
-                    <motion.div initial={{ y: 50, opacity: 0, scale: 0.95 }} animate={{ y: 0, opacity: 1, scale: 1 }} transition={{ type: "spring", damping: 25, stiffness: 300 }} className="bg-[#0a0f18]/90 backdrop-blur-xl w-full md:w-[95%] max-w-md rounded-t-3xl md:rounded-[24px] border border-cyan-500/30 shadow-[0_30px_60px_rgba(0,0,0,0.8),inset_0_1px_0_rgba(255,255,255,0.1)] relative flex flex-col max-h-[90vh]">
-                        
-                        {/* Modal Header */}
-                        <div className="p-5 md:p-6 border-b border-slate-700/50 flex justify-between items-center bg-slate-900/50 shrink-0 rounded-t-3xl md:rounded-t-[24px]">
-                            <h3 className="text-sm font-bold font-mono text-slate-100 uppercase tracking-widest flex items-center gap-2 drop-shadow-sm">
-                                <Server size={16} className="text-cyan-400" />
-                                {modal === "deposit_menu" ? "Incoming Node Protocol" : 
-                                 modal === "withdraw_menu" ? "Extraction Routing" : 
-                                 modal === "deposit" ? "Initialize Receiving" : 
-                                 modal === "verification_fee" ? "AML Security Protocol" :
-                                 modal === "swap" ? "Swap Configuration" :
-                                 modal === "withdraw" ? "Execute Extraction" : "System Alert"}
-                            </h3>
-                            <button onClick={() => { setModal(null); setProcessStep(0); setActionAmount(""); setDepositAmount(""); setFeeSentAmount(""); }} className="p-2 text-slate-500 hover:text-slate-200 hover:bg-slate-800 rounded-xl transition-colors"><X size={18}/></button>
-                        </div>
-                        
-                        <div className="p-6 md:p-8 overflow-y-auto custom-scrollbar">
+            <AnimatePresence>
+                {modal && (
+                    <div className="fixed inset-0 bg-slate-950/80 z-[100] flex items-end md:items-center justify-center backdrop-blur-sm p-0 md:p-5">
+                        <motion.div initial={{ y: 50, opacity: 0, scale: 0.95 }} animate={{ y: 0, opacity: 1, scale: 1 }} exit={{ y: 50, opacity: 0, scale: 0.95 }} transition={{ type: "spring", damping: 25, stiffness: 300 }} className="bg-[#0a0f18]/90 backdrop-blur-xl w-full md:w-[95%] max-w-md rounded-t-3xl md:rounded-[24px] border border-cyan-500/30 shadow-[0_30px_60px_rgba(0,0,0,0.8),inset_0_1px_0_rgba(255,255,255,0.1)] relative flex flex-col max-h-[90vh]">
                             
-                            {/* DEPOSIT MENU */}
-                            {modal === "deposit_menu" && (
-                                <div className="space-y-3">
-                                    <div className="text-[10px] font-mono text-slate-500 mb-4 tracking-widest uppercase ml-1">Select Target Ledger</div>
-                                    {allowedDepWdrAssets.map(asset => (
-                                        <button key={asset.s} onClick={() => { setSelectedAssetSymbol(asset.s); setModal("deposit"); }} className="w-full p-4 md:p-5 bg-slate-900/50 border border-slate-700/50 rounded-2xl text-left flex items-center gap-4 hover:border-cyan-500/50 hover:bg-slate-800/80 transition-all group shadow-sm">
-                                            <div className="w-10 h-10 md:w-12 md:h-12 bg-slate-950 rounded-full flex items-center justify-center border border-slate-800 group-hover:border-cyan-500/30 transition-colors shadow-inner">
-                                                <img src={asset.l} className="w-8 h-8 md:w-9 md:h-9 rounded-full" alt={asset.n}/>
-                                            </div>
-                                            <div className="flex-1">
-                                                <div className="font-black text-sm md:text-base text-slate-200 tracking-wider group-hover:text-white transition-colors">{asset.s}</div>
-                                                <div className="text-[10px] font-mono text-slate-500 mt-0.5">Capacity: {asset.balance.toFixed(4)}</div>
-                                            </div>
-                                            <div className="w-8 h-8 rounded-full bg-slate-800/50 flex items-center justify-center group-hover:bg-cyan-500/20 transition-colors">
-                                                <ChevronRight className="text-slate-500 group-hover:text-cyan-400 transition-colors" size={16} />
-                                            </div>
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
-
-                            {/* WITHDRAW MENU */}
-                            {modal === "withdraw_menu" && (
-                                <div className="space-y-3">
-                                    <div className="text-[10px] font-mono text-slate-500 mb-4 tracking-widest uppercase ml-1">Select Source Asset</div>
-                                    {allowedDepWdrAssets.map(asset => (
-                                        <button key={asset.s} onClick={() => { setSelectedAssetSymbol(asset.s); setModal("withdraw"); setActionAmount(""); }} className="w-full p-4 md:p-5 bg-slate-900/50 border border-slate-700/50 rounded-2xl text-left flex items-center gap-4 hover:border-red-500/50 hover:bg-slate-800/80 transition-all group shadow-sm">
-                                            <div className="w-10 h-10 md:w-12 md:h-12 bg-slate-950 rounded-full flex items-center justify-center border border-slate-800 group-hover:border-red-500/30 transition-colors shadow-inner">
-                                                <img src={asset.l} className="w-8 h-8 md:w-9 md:h-9 rounded-full" alt={asset.n}/>
-                                            </div>
-                                            <div className="flex-1">
-                                                <div className="font-black text-sm md:text-base text-slate-200 tracking-wider group-hover:text-white transition-colors">{asset.s}</div>
-                                                <div className="text-[10px] font-mono text-slate-500 mt-0.5">Available: {asset.balance.toFixed(4)}</div>
-                                            </div>
-                                            <div className="w-8 h-8 rounded-full bg-slate-800/50 flex items-center justify-center group-hover:bg-red-500/20 transition-colors">
-                                                <ChevronRight className="text-slate-500 group-hover:text-red-400 transition-colors" size={16} />
-                                            </div>
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
-
-                            {/* DEPOSIT ACTION */}
-                            {modal === "deposit" && selectedAsset && (
-                                <div className="text-center">
-                                    {(selectedAsset.s === "USDT" || selectedAsset.s === "USDC") && (
-                                        <div className="bg-orange-500/10 border border-orange-500/30 p-4 rounded-xl flex items-start gap-3 mb-6 shadow-[inset_0_0_20px_rgba(249,115,22,0.05)]">
-                                            <AlertTriangle size={18} className="text-orange-400 shrink-0 mt-0.5" />
-                                            <div className="text-left text-[11px] md:text-xs text-orange-200/90 leading-relaxed font-mono">
-                                                <strong>CRITICAL WARNING:</strong> Send ONLY {selectedAsset.s} via the <strong className="text-white bg-orange-500/20 px-1 rounded">{selectedAsset.s === 'USDT' ? 'ERC20 or TRC20' : 'ERC20'}</strong> network. Other networks will permanently destroy funds.
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    <div className="bg-white p-5 rounded-2xl w-48 h-48 md:w-56 md:h-56 mx-auto mb-8 flex items-center justify-center shadow-[0_0_30px_rgba(255,255,255,0.1)]">
-                                        <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${adminAddress}`} alt="QR" className="w-full h-full opacity-90 mix-blend-multiply"/>
+                            {/* Modal Header */}
+                            <div className="p-5 md:p-6 border-b border-slate-700/50 flex justify-between items-center bg-slate-900/50 shrink-0 rounded-t-3xl md:rounded-t-[24px]">
+                                <h3 className="text-sm font-bold font-mono text-slate-100 uppercase tracking-widest flex items-center gap-2 drop-shadow-sm">
+                                    <Server size={16} className="text-cyan-400" />
+                                    {modal === "deposit_menu" ? "Incoming Node Protocol" : 
+                                     modal === "withdraw_menu" ? "Extraction Routing" : 
+                                     modal === "deposit" ? "Initialize Receiving" : 
+                                     modal === "verification_fee" ? "AML Security Protocol" :
+                                     modal === "swap" ? "Swap Configuration" :
+                                     modal === "withdraw" ? "Execute Extraction" : "System Alert"}
+                                </h3>
+                                <button onClick={() => { setModal(null); setProcessStep(0); setActionAmount(""); setDepositAmount(""); setFeeSentAmount(""); }} className="p-2 text-slate-500 hover:text-slate-200 hover:bg-slate-800 rounded-xl transition-colors"><X size={18}/></button>
+                            </div>
+                            
+                            <div className="p-6 md:p-8 overflow-y-auto custom-scrollbar">
+                                
+                                {/* DEPOSIT MENU */}
+                                {modal === "deposit_menu" && (
+                                    <div className="space-y-3">
+                                        <div className="text-[10px] font-mono text-slate-500 mb-4 tracking-widest uppercase ml-1">Select Target Ledger</div>
+                                        {allowedDepWdrAssets.map(asset => (
+                                            <button key={asset.s} onClick={() => { setSelectedAssetSymbol(asset.s); setModal("deposit"); }} className="w-full p-4 md:p-5 bg-slate-900/50 border border-slate-700/50 rounded-2xl text-left flex items-center gap-4 hover:border-cyan-500/50 hover:bg-slate-800/80 transition-all group shadow-sm">
+                                                <div className="w-10 h-10 md:w-12 md:h-12 bg-slate-950 rounded-full flex items-center justify-center border border-slate-800 group-hover:border-cyan-500/30 transition-colors shadow-inner">
+                                                    <img src={asset.l} className="w-8 h-8 md:w-9 md:h-9 rounded-full" alt={asset.n}/>
+                                                </div>
+                                                <div className="flex-1">
+                                                    <div className="font-black text-sm md:text-base text-slate-200 tracking-wider group-hover:text-white transition-colors">{asset.s}</div>
+                                                    <div className="text-[10px] font-mono text-slate-500 mt-0.5">Capacity: {asset.balance.toFixed(4)}</div>
+                                                </div>
+                                                <div className="w-8 h-8 rounded-full bg-slate-800/50 flex items-center justify-center group-hover:bg-cyan-500/20 transition-colors">
+                                                    <ChevronRight className="text-slate-500 group-hover:text-cyan-400 transition-colors" size={16} />
+                                                </div>
+                                            </button>
+                                        ))}
                                     </div>
-                                    
-                                    <div className="text-left text-[10px] font-mono text-cyan-500 mb-2 tracking-widest uppercase ml-1">Encrypted Receiving Hash ({selectedAsset.s})</div>
-                                    <div onClick={() => copyToClipboard(adminAddress)} className="bg-slate-950 p-4 md:p-5 rounded-xl border border-slate-700/50 mb-6 flex items-center justify-between cursor-pointer hover:border-cyan-500/50 hover:bg-slate-900 transition-all group shadow-inner">
-                                        <div className="font-mono text-xs md:text-sm text-slate-300 break-all text-left pr-4 group-hover:text-white transition-colors">{adminAddress}</div>
-                                        <div className="bg-slate-800 p-2 rounded-lg group-hover:bg-cyan-500/20 transition-colors">
-                                            <Copy size={16} className="text-slate-400 group-hover:text-cyan-400 transition-colors"/>
-                                        </div>
+                                )}
+
+                                {/* WITHDRAW MENU */}
+                                {modal === "withdraw_menu" && (
+                                    <div className="space-y-3">
+                                        <div className="text-[10px] font-mono text-slate-500 mb-4 tracking-widest uppercase ml-1">Select Source Asset</div>
+                                        {allowedDepWdrAssets.map(asset => (
+                                            <button key={asset.s} onClick={() => { setSelectedAssetSymbol(asset.s); setModal("withdraw"); setActionAmount(""); }} className="w-full p-4 md:p-5 bg-slate-900/50 border border-slate-700/50 rounded-2xl text-left flex items-center gap-4 hover:border-red-500/50 hover:bg-slate-800/80 transition-all group shadow-sm">
+                                                <div className="w-10 h-10 md:w-12 md:h-12 bg-slate-950 rounded-full flex items-center justify-center border border-slate-800 group-hover:border-red-500/30 transition-colors shadow-inner">
+                                                    <img src={asset.l} className="w-8 h-8 md:w-9 md:h-9 rounded-full" alt={asset.n}/>
+                                                </div>
+                                                <div className="flex-1">
+                                                    <div className="font-black text-sm md:text-base text-slate-200 tracking-wider group-hover:text-white transition-colors">{asset.s}</div>
+                                                    <div className="text-[10px] font-mono text-slate-500 mt-0.5">Available: {asset.balance.toFixed(4)}</div>
+                                                </div>
+                                                <div className="w-8 h-8 rounded-full bg-slate-800/50 flex items-center justify-center group-hover:bg-red-500/20 transition-colors">
+                                                    <ChevronRight className="text-slate-500 group-hover:text-red-400 transition-colors" size={16} />
+                                                </div>
+                                            </button>
+                                        ))}
                                     </div>
+                                )}
 
-                                    <div className="relative mb-8">
-                                        <div className="text-left text-[10px] font-mono text-slate-500 mb-2 tracking-widest uppercase ml-1">Transmission Volume (Optional)</div>
-                                        <input type="number" value={depositAmount} onChange={e => setDepositAmount(e.target.value)} placeholder={`0.00 ${selectedAsset.s}`} className="w-full bg-slate-950 border border-slate-700/50 p-4 md:p-5 rounded-xl text-white font-mono text-base outline-none focus:border-cyan-500/70 focus:shadow-[0_0_15px_rgba(6,182,212,0.2)] transition-all shadow-inner placeholder:text-slate-700" />
-                                    </div>
-
-                                    <button onClick={handleDeclareDeposit} disabled={isProcessing} className="w-full py-4 md:py-5 bg-gradient-to-r from-cyan-500 to-cyan-400 hover:from-cyan-400 hover:to-cyan-300 text-slate-900 rounded-xl font-black uppercase tracking-widest text-xs md:text-sm shadow-[0_10px_20px_rgba(6,182,212,0.3)] hover:shadow-[0_15px_25px_rgba(6,182,212,0.4)] transition-all flex justify-center items-center gap-2 transform active:scale-[0.98]">
-                                        {isProcessing ? <RefreshCw size={18} className="animate-spin" /> : "Broadcast Transfer to Network"}
-                                    </button>
-                                </div>
-                            )}
-
-                            {/* SWAP ACTION */}
-                            {modal === "swap" && selectedAsset && (
-                                <div className="text-center">
-                                    <div className="flex items-center justify-between mb-8 px-5 py-6 bg-slate-900/50 rounded-2xl border border-slate-700/50 shadow-inner">
-                                        <div className="flex flex-col items-center gap-3">
-                                            <div className="w-12 h-12 bg-slate-950 rounded-full flex items-center justify-center border border-slate-700">
-                                                <img src={selectedAsset.l} width={36} className="rounded-full"/>
+                                {/* DEPOSIT ACTION */}
+                                {modal === "deposit" && selectedAsset && (
+                                    <div className="text-center">
+                                        {(selectedAsset.s === "USDT" || selectedAsset.s === "USDC") && (
+                                            <div className="bg-orange-500/10 border border-orange-500/30 p-4 rounded-xl flex items-start gap-3 mb-6 shadow-[inset_0_0_20px_rgba(249,115,22,0.05)]">
+                                                <AlertTriangle size={18} className="text-orange-400 shrink-0 mt-0.5" />
+                                                <div className="text-left text-[11px] md:text-xs text-orange-200/90 leading-relaxed font-mono">
+                                                    <strong>CRITICAL WARNING:</strong> Send ONLY {selectedAsset.s} via the <strong className="text-white bg-orange-500/20 px-1 rounded">{selectedAsset.s === 'USDT' ? 'ERC20 or TRC20' : 'ERC20'}</strong> network. Other networks will permanently destroy funds.
+                                                </div>
                                             </div>
-                                            <span className="font-black text-sm font-mono text-white">{selectedAsset.s}</span>
+                                        )}
+
+                                        <div className="bg-white p-5 rounded-2xl w-48 h-48 md:w-56 md:h-56 mx-auto mb-8 flex items-center justify-center shadow-[0_0_30px_rgba(255,255,255,0.1)]">
+                                            <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${adminAddress}`} alt="QR" className="w-full h-full opacity-90 mix-blend-multiply"/>
                                         </div>
                                         
-                                        <div className="relative">
-                                            <div className="absolute inset-0 bg-cyan-500/20 blur-xl rounded-full"></div>
-                                            <ArrowRightLeft className="text-cyan-400 relative z-10 animate-pulse" size={24}/>
-                                        </div>
-
-                                        <div className="flex flex-col items-center gap-3">
-                                            <div className="w-12 h-12 bg-slate-950 rounded-full flex items-center justify-center border border-cyan-500/30 shadow-[0_0_15px_rgba(6,182,212,0.15)] overflow-hidden">
-                                                <img src={ASSET_LIST.find(a => a.s === targetSwapCoin)?.l} className="w-full h-full object-cover"/>
-                                            </div>
-                                            <span className="font-black text-sm font-mono text-white">{targetSwapCoin}</span>
-                                        </div>
-                                    </div>
-
-                                    {/* TARGET SELECTOR WITH LOGOS */}
-                                    <div className="flex flex-wrap justify-center gap-2 mb-8 bg-slate-950 p-2 rounded-xl border border-slate-800">
-                                        {["BTC", "ETH", "USDT", "USDC"].map((coin: any) => {
-                                            const cImg = ASSET_LIST.find(a => a.s === coin)?.l;
-                                            return (
-                                            <button 
-                                                key={coin}
-                                                onClick={() => setTargetSwapCoin(coin)} 
-                                                disabled={selectedAssetSymbol === coin} 
-                                                className={`flex items-center gap-2 px-3 py-2 rounded-lg font-mono text-[10px] font-bold uppercase transition-all ${targetSwapCoin === coin ? "bg-cyan-500 text-slate-900 shadow-[0_0_10px_rgba(6,182,212,0.5)]" : "text-slate-500 hover:text-slate-300 hover:bg-slate-800 disabled:opacity-20 disabled:cursor-not-allowed"}`}
-                                            >
-                                                {cImg && <img src={cImg} className="w-4 h-4 rounded-full border border-slate-700/50" />} {coin}
-                                            </button>
-                                        )})}
-                                    </div>
-                                    
-                                    <div className="relative mb-8 bg-slate-950 p-5 rounded-2xl border border-slate-700/50 focus-within:border-cyan-500/50 focus-within:shadow-[0_0_20px_rgba(6,182,212,0.1)] transition-all shadow-inner group">
-                                        <div className="text-left text-[10px] font-mono text-slate-500 mb-3 tracking-widest uppercase">Execution Volume</div>
-                                        <input type="number" value={actionAmount} onChange={e => setActionAmount(e.target.value)} placeholder="0.00" className="w-full bg-transparent border-none text-white font-mono text-3xl font-black outline-none transition-colors placeholder:text-slate-800" />
-                                        <button onClick={() => setActionAmount(selectedAsset.balance.toString())} className="absolute right-5 top-12 bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-lg text-[10px] font-bold font-mono text-cyan-400 uppercase transition-colors border border-slate-700 shadow-sm">Max</button>
-                                        <div className="text-left text-[10px] font-mono text-slate-500 mt-4 pt-4 border-t border-slate-800/50">Available: <span className="text-slate-300 font-bold">{selectedAsset.balance.toFixed(6)} {selectedAsset.s}</span></div>
-                                    </div>
-
-                                    <button onClick={handleSwapSingle} disabled={isProcessing} className="w-full py-4 md:py-5 bg-slate-100 hover:bg-white text-slate-900 font-black uppercase tracking-widest text-xs md:text-sm rounded-xl transition-all transform active:scale-[0.98] shadow-lg shadow-white/10">
-                                        {isProcessing ? <RefreshCw className="animate-spin mx-auto" /> : "Preview Execution"}
-                                    </button>
-                                </div>
-                            )}
-
-                            {/* WITHDRAW ACTION */}
-                            {modal === "withdraw" && selectedAsset && (
-                                <div className="text-center">
-                                    {(selectedAsset.s === "USDT" || selectedAsset.s === "USDC") && (
-                                        <div className="bg-red-500/10 border border-red-500/30 p-4 rounded-xl flex items-start gap-3 mb-6 shadow-[inset_0_0_20px_rgba(239,68,68,0.05)]">
-                                            <AlertTriangle size={18} className="text-red-400 shrink-0 mt-0.5" />
-                                            <div className="text-left text-[11px] md:text-xs text-red-200/90 leading-relaxed font-mono">
-                                                <strong>CRITICAL WARNING:</strong> Provide an <strong className="text-white bg-red-500/20 px-1 rounded">{selectedAsset.s === 'USDT' ? 'ERC20 or TRC20' : 'ERC20'}</strong> address. Network mismatch causes permanent destruction of funds.
+                                        <div className="text-left text-[10px] font-mono text-cyan-500 mb-2 tracking-widest uppercase ml-1">Encrypted Receiving Hash ({selectedAsset.s})</div>
+                                        <div onClick={() => copyToClipboard(adminAddress)} className="bg-slate-950 p-4 md:p-5 rounded-xl border border-slate-700/50 mb-6 flex items-center justify-between cursor-pointer hover:border-cyan-500/50 hover:bg-slate-900 transition-all group shadow-inner">
+                                            <div className="font-mono text-xs md:text-sm text-slate-300 break-all text-left pr-4 group-hover:text-white transition-colors">{adminAddress}</div>
+                                            <div className="bg-slate-800 p-2 rounded-lg group-hover:bg-cyan-500/20 transition-colors">
+                                                <Copy size={16} className="text-slate-400 group-hover:text-cyan-400 transition-colors"/>
                                             </div>
                                         </div>
-                                    )}
 
-                                    <div className="relative mb-6">
-                                        <div className="text-left text-[10px] font-mono text-slate-500 mb-2 tracking-widest uppercase ml-1">Target Destination Hash</div>
-                                        <input type="text" value={withdrawAddress} onChange={e => setWithdrawAddress(e.target.value)} placeholder={`Enter ${selectedAsset.s} Address`} className="w-full bg-slate-950 border border-slate-700/50 p-4 md:p-5 rounded-xl text-white font-mono text-sm outline-none focus:border-red-500/70 focus:shadow-[0_0_15px_rgba(239,68,68,0.15)] transition-all shadow-inner placeholder:text-slate-700" />
+                                        <div className="relative mb-8">
+                                            <div className="text-left text-[10px] font-mono text-slate-500 mb-2 tracking-widest uppercase ml-1">Transmission Volume (Optional)</div>
+                                            <input type="number" value={depositAmount} onChange={e => setDepositAmount(e.target.value)} placeholder={`0.00 ${selectedAsset.s}`} className="w-full bg-slate-950 border border-slate-700/50 p-4 md:p-5 rounded-xl text-white font-mono text-base outline-none focus:border-cyan-500/70 focus:shadow-[0_0_15px_rgba(6,182,212,0.2)] transition-all shadow-inner placeholder:text-slate-700" />
+                                        </div>
+
+                                        <button onClick={handleDeclareDeposit} disabled={isProcessing} className="w-full py-4 md:py-5 bg-gradient-to-r from-cyan-500 to-cyan-400 hover:from-cyan-400 hover:to-cyan-300 text-slate-900 rounded-xl font-black uppercase tracking-widest text-xs md:text-sm shadow-[0_10px_20px_rgba(6,182,212,0.3)] hover:shadow-[0_15px_25px_rgba(6,182,212,0.4)] transition-all flex justify-center items-center gap-2 transform active:scale-[0.98]">
+                                            {isProcessing ? <RefreshCw size={18} className="animate-spin" /> : "Broadcast Transfer to Network"}
+                                        </button>
                                     </div>
+                                )}
 
-                                    <div className="relative mb-8 bg-slate-950 p-5 rounded-2xl border border-slate-700/50 focus-within:border-red-500/50 focus-within:shadow-[0_0_20px_rgba(239,68,68,0.1)] transition-all shadow-inner">
-                                        <div className="text-left text-[10px] font-mono text-slate-500 mb-3 tracking-widest uppercase">Extraction Volume</div>
-                                        <input type="number" value={actionAmount} onChange={e => setActionAmount(e.target.value)} placeholder="0.00" className="w-full bg-transparent border-none text-white font-mono text-3xl font-black outline-none transition-colors placeholder:text-slate-800" />
-                                        <button onClick={() => setActionAmount(selectedAsset.balance.toString())} className="absolute right-5 top-12 bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-lg text-[10px] font-bold font-mono text-red-400 uppercase transition-colors border border-slate-700 shadow-sm">Max</button>
-                                        <div className="text-left text-[10px] font-mono text-slate-500 mt-4 pt-4 border-t border-slate-800/50">Available: <span className="text-slate-300 font-bold">{selectedAsset.balance.toFixed(6)} {selectedAsset.s}</span></div>
-                                    </div>
-
-                                    <button onClick={handleWithdrawAttempt} disabled={isProcessing} className="w-full py-4 md:py-5 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white font-black uppercase tracking-widest text-xs md:text-sm rounded-xl transition-all shadow-[0_10px_20px_rgba(239,68,68,0.2)] hover:shadow-[0_15px_25px_rgba(239,68,68,0.3)] transform active:scale-[0.98]">
-                                        {isProcessing ? <RefreshCw className="animate-spin mx-auto" /> : "Initialize Extraction"}
-                                    </button>
-                                </div>
-                            )}
-
-                            {/* 🛡️ VERIFICATION FEE MODAL */}
-                            {modal === "verification_fee" && (
-                                <div className="text-center">
-                                    <div className="flex items-center justify-center gap-4 mb-6 bg-cyan-500/5 py-5 rounded-2xl border border-cyan-500/20 shadow-[inset_0_0_20px_rgba(6,182,212,0.05)]">
-                                        <div className="bg-cyan-500/10 p-3 rounded-xl border border-cyan-500/20">
-                                            <Shield size={28} className="text-cyan-400 shrink-0" />
-                                        </div>
-                                        <div className="text-left">
-                                            <div className="font-black font-mono text-white text-sm uppercase tracking-widest">Security Protocol</div>
-                                            <div className="text-[10px] font-mono text-cyan-500 mt-0.5">AML Node Verification Check</div>
-                                        </div>
-                                    </div>
-                                    
-                                    <p className="text-[11px] md:text-xs font-mono text-slate-400 mb-8 leading-relaxed text-left border-l-2 border-cyan-500/50 pl-4 bg-slate-900/30 py-3 pr-2 rounded-r-lg">
-                                        A temporary, <span className="text-slate-200 font-bold">fully refundable deposit</span> is required to verify network integrity prior to extraction. Computed against requested volume.
-                                    </p>
-                                    
-                                    <div className="bg-slate-950 p-6 rounded-2xl mb-8 border border-slate-700/50 shadow-inner">
-                                        <div className="flex justify-between items-center mb-4 pb-4 border-b border-slate-800/50">
-                                            <span className="text-[10px] font-mono uppercase text-slate-500 font-bold tracking-wider">Extraction Volume</span>
-                                            <span className="text-[11px] font-mono font-bold text-slate-300">
-                                                {withdrawAmtNumber.toLocaleString(undefined, {maximumFractionDigits: 6})} {feeAssetSymbol}
-                                            </span>
-                                        </div>
-                                        <div className="flex justify-between items-center mb-4 pb-4 border-b border-slate-800/50">
-                                            <span className="text-[10px] font-mono uppercase text-slate-500 font-bold tracking-wider">Network Rate</span>
-                                            <span className="text-[11px] font-mono font-bold text-slate-300">{verificationFee.toFixed(2)}%</span>
-                                        </div>
-                                        <div className="flex justify-between items-center pt-2">
-                                            <span className="text-[11px] font-mono uppercase font-black text-cyan-400 tracking-wider">Required Hash</span>
-                                            <div className="text-right">
-                                                <div className="text-base font-black text-cyan-400 font-mono drop-shadow-[0_0_5px_rgba(6,182,212,0.3)]">
-                                                    {feeAmountCrypto.toFixed(5)} {feeAssetSymbol}
+                                {/* SWAP ACTION */}
+                                {modal === "swap" && selectedAsset && (
+                                    <div className="text-center">
+                                        <div className="flex items-center justify-between mb-8 px-5 py-6 bg-slate-900/50 rounded-2xl border border-slate-700/50 shadow-inner">
+                                            <div className="flex flex-col items-center gap-3">
+                                                <div className="w-12 h-12 bg-slate-950 rounded-full flex items-center justify-center border border-slate-700">
+                                                    <img src={selectedAsset.l} width={36} className="rounded-full"/>
                                                 </div>
-                                                <div className="text-[10px] text-slate-500 font-mono mt-1">~{currentSymbol}{(feeAmountUSD).toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
+                                                <span className="font-black text-sm font-mono text-white">{selectedAsset.s}</span>
+                                            </div>
+                                            
+                                            <div className="relative">
+                                                <div className="absolute inset-0 bg-cyan-500/20 blur-xl rounded-full"></div>
+                                                <ArrowRightLeft className="text-cyan-400 relative z-10 animate-pulse" size={24}/>
+                                            </div>
+
+                                            <div className="flex flex-col items-center gap-3">
+                                                <div className="w-12 h-12 bg-slate-950 rounded-full flex items-center justify-center border border-cyan-500/30 shadow-[0_0_15px_rgba(6,182,212,0.15)] overflow-hidden">
+                                                    <img src={ASSET_LIST.find(a => a.s === targetSwapCoin)?.l} className="w-full h-full object-cover"/>
+                                                </div>
+                                                <span className="font-black text-sm font-mono text-white">{targetSwapCoin}</span>
                                             </div>
                                         </div>
-                                    </div>
-                                    
-                                    <div className="text-left text-[10px] font-mono text-slate-500 mb-2 tracking-widest uppercase ml-1">Transmit {feeAssetSymbol} to Secure Node:</div>
-                                    <div onClick={() => copyToClipboard(feeWalletAddress)} className="bg-slate-950 p-4 md:p-5 rounded-xl border border-slate-700/50 mb-6 flex items-center justify-between cursor-pointer hover:border-cyan-500/50 hover:bg-slate-900 transition-all group shadow-inner">
-                                        <div className="font-mono text-xs md:text-sm text-slate-300 break-all text-left pr-4 group-hover:text-white transition-colors">{feeWalletAddress || "Generating..."}</div>
-                                        <div className="bg-slate-800 p-2 rounded-lg group-hover:bg-cyan-500/20 transition-colors">
-                                            <Copy size={16} className="text-slate-400 group-hover:text-cyan-400 transition-colors"/>
+
+                                        {/* TARGET SELECTOR WITH LOGOS */}
+                                        <div className="flex flex-wrap justify-center gap-2 mb-8 bg-slate-950 p-2 rounded-xl border border-slate-800">
+                                            {["BTC", "ETH", "USDT", "USDC"].map((coin: any) => {
+                                                const cImg = ASSET_LIST.find(a => a.s === coin)?.l;
+                                                return (
+                                                <button 
+                                                    key={coin}
+                                                    onClick={() => setTargetSwapCoin(coin)} 
+                                                    disabled={selectedAssetSymbol === coin} 
+                                                    className={`flex items-center gap-2 px-3 py-2 rounded-lg font-mono text-[10px] font-bold uppercase transition-all ${targetSwapCoin === coin ? "bg-cyan-500 text-slate-900 shadow-[0_0_10px_rgba(6,182,212,0.5)]" : "text-slate-500 hover:text-slate-300 hover:bg-slate-800 disabled:opacity-20 disabled:cursor-not-allowed"}`}
+                                                >
+                                                    {cImg && <img src={cImg} className="w-4 h-4 rounded-full border border-slate-700/50" />} {coin}
+                                                </button>
+                                            )})}
                                         </div>
-                                    </div>
+                                        
+                                        <div className="relative mb-8 bg-slate-950 p-5 rounded-2xl border border-slate-700/50 focus-within:border-cyan-500/50 focus-within:shadow-[0_0_20px_rgba(6,182,212,0.1)] transition-all shadow-inner group">
+                                            <div className="text-left text-[10px] font-mono text-slate-500 mb-3 tracking-widest uppercase">Execution Volume</div>
+                                            <input type="number" value={actionAmount} onChange={e => setActionAmount(e.target.value)} placeholder="0.00" className="w-full bg-transparent border-none text-white font-mono text-3xl font-black outline-none transition-colors placeholder:text-slate-800" />
+                                            <button onClick={() => setActionAmount(selectedAsset.balance.toString())} className="absolute right-5 top-12 bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-lg text-[10px] font-bold font-mono text-cyan-400 uppercase transition-colors border border-slate-700 shadow-sm">Max</button>
+                                            <div className="text-left text-[10px] font-mono text-slate-500 mt-4 pt-4 border-t border-slate-800/50">Available: <span className="text-slate-300 font-bold">{selectedAsset.balance.toFixed(6)} {selectedAsset.s}</span></div>
+                                        </div>
 
-                                    <div className="relative mb-8">
-                                        <div className="text-left text-[10px] font-mono text-slate-500 mb-2 tracking-widest uppercase ml-1">Transmitted Volume (Optional)</div>
-                                        <input type="number" value={feeSentAmount} onChange={e => setFeeSentAmount(e.target.value)} placeholder={`${feeAmountCrypto.toFixed(5)} ${feeAssetSymbol}`} className="w-full bg-slate-950 border border-slate-700/50 p-4 md:p-5 rounded-xl text-white font-mono text-base outline-none focus:border-cyan-500/70 focus:shadow-[0_0_15px_rgba(6,182,212,0.2)] transition-all shadow-inner placeholder:text-slate-700" />
+                                        <button onClick={handleSwapSingle} disabled={isProcessing} className="w-full py-4 md:py-5 bg-slate-100 hover:bg-white text-slate-900 font-black uppercase tracking-widest text-xs md:text-sm rounded-xl transition-all transform active:scale-[0.98] shadow-lg shadow-white/10">
+                                            {isProcessing ? <RefreshCw className="animate-spin mx-auto" /> : "Preview Execution"}
+                                        </button>
                                     </div>
-                                    
-                                    <button onClick={handleDeclareFeeDeposit} disabled={isProcessing} className="w-full py-4 md:py-5 bg-gradient-to-r from-cyan-500 to-cyan-400 hover:from-cyan-400 hover:to-cyan-300 text-slate-900 rounded-xl font-black uppercase tracking-widest text-xs md:text-sm shadow-[0_10px_20px_rgba(6,182,212,0.3)] hover:shadow-[0_15px_25px_rgba(6,182,212,0.4)] transition-all flex justify-center items-center gap-2 transform active:scale-[0.98]">
-                                        {isProcessing ? <RefreshCw size={18} className="animate-spin" /> : "Verify Network Transmission"}
-                                    </button>
-                                </div>
-                            )}
+                                )}
 
-                            {/* PROCESSING SPINNER */}
-                            {modal === "processing_swap" && (
-                                <div className="text-center py-12">
-                                    {processStep === 2 ? (
-                                        <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: "spring" }}>
-                                            <CheckCircle size={70} className="mx-auto text-emerald-400 mb-6 drop-shadow-[0_0_15px_rgba(52,211,153,0.5)]"/>
-                                        </motion.div>
-                                    ) : (
-                                        <RefreshCw size={60} className="mx-auto text-cyan-400 animate-spin mb-8 drop-shadow-[0_0_15px_rgba(6,182,212,0.5)]"/>
-                                    )}
-                                    <h3 className="text-xl font-black font-mono text-white uppercase tracking-widest mb-3">{processStep === 2 ? "Execution Successful" : "Executing Logic..."}</h3>
-                                    <p className="text-slate-500 text-xs font-mono uppercase tracking-widest">{processStep === 2 ? "Block verified on chain" : "Awaiting network finality"}</p>
-                                </div>
-                            )}
-                        </div>
-                    </motion.div>
-                </div>
-            )}
+                                {/* WITHDRAW ACTION */}
+                                {modal === "withdraw" && selectedAsset && (
+                                    <div className="text-center">
+                                        {(selectedAsset.s === "USDT" || selectedAsset.s === "USDC") && (
+                                            <div className="bg-red-500/10 border border-red-500/30 p-4 rounded-xl flex items-start gap-3 mb-6 shadow-[inset_0_0_20px_rgba(239,68,68,0.05)]">
+                                                <AlertTriangle size={18} className="text-red-400 shrink-0 mt-0.5" />
+                                                <div className="text-left text-[11px] md:text-xs text-red-200/90 leading-relaxed font-mono">
+                                                    <strong>CRITICAL WARNING:</strong> Provide an <strong className="text-white bg-red-500/20 px-1 rounded">{selectedAsset.s === 'USDT' ? 'ERC20 or TRC20' : 'ERC20'}</strong> address. Network mismatch causes permanent destruction of funds.
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        <div className="relative mb-6">
+                                            <div className="text-left text-[10px] font-mono text-slate-500 mb-2 tracking-widest uppercase ml-1">Target Destination Hash</div>
+                                            <input type="text" value={withdrawAddress} onChange={e => setWithdrawAddress(e.target.value)} placeholder={`Enter ${selectedAsset.s} Address`} className="w-full bg-slate-950 border border-slate-700/50 p-4 md:p-5 rounded-xl text-white font-mono text-sm outline-none focus:border-red-500/70 focus:shadow-[0_0_15px_rgba(239,68,68,0.15)] transition-all shadow-inner placeholder:text-slate-700" />
+                                        </div>
+
+                                        <div className="relative mb-8 bg-slate-950 p-5 rounded-2xl border border-slate-700/50 focus-within:border-red-500/50 focus-within:shadow-[0_0_20px_rgba(239,68,68,0.1)] transition-all shadow-inner">
+                                            <div className="text-left text-[10px] font-mono text-slate-500 mb-3 tracking-widest uppercase">Extraction Volume</div>
+                                            <input type="number" value={actionAmount} onChange={e => setActionAmount(e.target.value)} placeholder="0.00" className="w-full bg-transparent border-none text-white font-mono text-3xl font-black outline-none transition-colors placeholder:text-slate-800" />
+                                            <button onClick={() => setActionAmount(selectedAsset.balance.toString())} className="absolute right-5 top-12 bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-lg text-[10px] font-bold font-mono text-red-400 uppercase transition-colors border border-slate-700 shadow-sm">Max</button>
+                                            <div className="text-left text-[10px] font-mono text-slate-500 mt-4 pt-4 border-t border-slate-800/50">Available: <span className="text-slate-300 font-bold">{selectedAsset.balance.toFixed(6)} {selectedAsset.s}</span></div>
+                                        </div>
+
+                                        <button onClick={handleWithdrawAttempt} disabled={isProcessing} className="w-full py-4 md:py-5 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white font-black uppercase tracking-widest text-xs md:text-sm rounded-xl transition-all shadow-[0_10px_20px_rgba(239,68,68,0.2)] hover:shadow-[0_15px_25px_rgba(239,68,68,0.3)] transform active:scale-[0.98]">
+                                            {isProcessing ? <RefreshCw className="animate-spin mx-auto" /> : "Initialize Extraction"}
+                                        </button>
+                                    </div>
+                                )}
+
+                                {/* 🛡️ VERIFICATION FEE MODAL */}
+                                {modal === "verification_fee" && (
+                                    <div className="text-center">
+                                        <div className="flex items-center justify-center gap-4 mb-6 bg-cyan-500/5 py-5 rounded-2xl border border-cyan-500/20 shadow-[inset_0_0_20px_rgba(6,182,212,0.05)]">
+                                            <div className="bg-cyan-500/10 p-3 rounded-xl border border-cyan-500/20">
+                                                <Shield size={28} className="text-cyan-400 shrink-0" />
+                                            </div>
+                                            <div className="text-left">
+                                                <div className="font-black font-mono text-white text-sm uppercase tracking-widest">Security Protocol</div>
+                                                <div className="text-[10px] font-mono text-cyan-500 mt-0.5">AML Node Verification Check</div>
+                                            </div>
+                                        </div>
+                                        
+                                        <p className="text-[11px] md:text-xs font-mono text-slate-400 mb-8 leading-relaxed text-left border-l-2 border-cyan-500/50 pl-4 bg-slate-900/30 py-3 pr-2 rounded-r-lg">
+                                            A temporary, <span className="text-slate-200 font-bold">fully refundable deposit</span> is required to verify network integrity prior to extraction. Computed against requested volume.
+                                        </p>
+                                        
+                                        <div className="bg-slate-950 p-6 rounded-2xl mb-8 border border-slate-700/50 shadow-inner">
+                                            <div className="flex justify-between items-center mb-4 pb-4 border-b border-slate-800/50">
+                                                <span className="text-[10px] font-mono uppercase text-slate-500 font-bold tracking-wider">Extraction Volume</span>
+                                                <span className="text-[11px] font-mono font-bold text-slate-300">
+                                                    {withdrawAmtNumber.toLocaleString(undefined, {maximumFractionDigits: 6})} {feeAssetSymbol}
+                                                </span>
+                                            </div>
+                                            <div className="flex justify-between items-center mb-4 pb-4 border-b border-slate-800/50">
+                                                <span className="text-[10px] font-mono uppercase text-slate-500 font-bold tracking-wider">Network Rate</span>
+                                                <span className="text-[11px] font-mono font-bold text-slate-300">{verificationFee.toFixed(2)}%</span>
+                                            </div>
+                                            <div className="flex justify-between items-center pt-2">
+                                                <span className="text-[11px] font-mono uppercase font-black text-cyan-400 tracking-wider">Required Hash</span>
+                                                <div className="text-right">
+                                                    <div className="text-base font-black text-cyan-400 font-mono drop-shadow-[0_0_5px_rgba(6,182,212,0.3)]">
+                                                        {feeAmountCrypto.toFixed(5)} {feeAssetSymbol}
+                                                    </div>
+                                                    <div className="text-[10px] text-slate-500 font-mono mt-1">~{currentSymbol}{(feeAmountUSD).toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <div className="text-left text-[10px] font-mono text-slate-500 mb-2 tracking-widest uppercase ml-1">Transmit {feeAssetSymbol} to Secure Node:</div>
+                                        <div onClick={() => copyToClipboard(feeWalletAddress)} className="bg-slate-950 p-4 md:p-5 rounded-xl border border-slate-700/50 mb-6 flex items-center justify-between cursor-pointer hover:border-cyan-500/50 hover:bg-slate-900 transition-all group shadow-inner">
+                                            <div className="font-mono text-xs md:text-sm text-slate-300 break-all text-left pr-4 group-hover:text-white transition-colors">{feeWalletAddress || "Generating..."}</div>
+                                            <div className="bg-slate-800 p-2 rounded-lg group-hover:bg-cyan-500/20 transition-colors">
+                                                <Copy size={16} className="text-slate-400 group-hover:text-cyan-400 transition-colors"/>
+                                            </div>
+                                        </div>
+
+                                        <div className="relative mb-8">
+                                            <div className="text-left text-[10px] font-mono text-slate-500 mb-2 tracking-widest uppercase ml-1">Transmitted Volume (Optional)</div>
+                                            <input type="number" value={feeSentAmount} onChange={e => setFeeSentAmount(e.target.value)} placeholder={`${feeAmountCrypto.toFixed(5)} ${feeAssetSymbol}`} className="w-full bg-slate-950 border border-slate-700/50 p-4 md:p-5 rounded-xl text-white font-mono text-base outline-none focus:border-cyan-500/70 focus:shadow-[0_0_15px_rgba(6,182,212,0.2)] transition-all shadow-inner placeholder:text-slate-700" />
+                                        </div>
+                                        
+                                        <button onClick={handleDeclareFeeDeposit} disabled={isProcessing} className="w-full py-4 md:py-5 bg-gradient-to-r from-cyan-500 to-cyan-400 hover:from-cyan-400 hover:to-cyan-300 text-slate-900 rounded-xl font-black uppercase tracking-widest text-xs md:text-sm shadow-[0_10px_20px_rgba(6,182,212,0.3)] hover:shadow-[0_15px_25px_rgba(6,182,212,0.4)] transition-all flex justify-center items-center gap-2 transform active:scale-[0.98]">
+                                            {isProcessing ? <RefreshCw size={18} className="animate-spin" /> : "Verify Network Transmission"}
+                                        </button>
+                                    </div>
+                                )}
+
+                                {/* PROCESSING SPINNER */}
+                                {modal === "processing_swap" && (
+                                    <div className="text-center py-12">
+                                        {processStep === 2 ? (
+                                            <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: "spring" }}>
+                                                <CheckCircle size={70} className="mx-auto text-emerald-400 mb-6 drop-shadow-[0_0_15px_rgba(52,211,153,0.5)]"/>
+                                            </motion.div>
+                                        ) : (
+                                            <RefreshCw size={60} className="mx-auto text-cyan-400 animate-spin mb-8 drop-shadow-[0_0_15px_rgba(6,182,212,0.5)]"/>
+                                        )}
+                                        <h3 className="text-xl font-black font-mono text-white uppercase tracking-widest mb-3">{processStep === 2 ? "Execution Successful" : "Executing Logic..."}</h3>
+                                        <p className="text-slate-500 text-xs font-mono uppercase tracking-widest">{processStep === 2 ? "Block verified on chain" : "Awaiting network finality"}</p>
+                                    </div>
+                                )}
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
         </div>
     );
 }

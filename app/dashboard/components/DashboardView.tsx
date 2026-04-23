@@ -7,8 +7,6 @@ import {
     Server, LockKeyhole, RefreshCw, ChevronDown
 } from "lucide-react";
 import { ASSET_LIST } from "./constants"; 
-
-// 🛡️ THE FIX 1: Import shared Supabase instance instead of creating a new one
 import { supabase } from "../../../lib/supabase/client";
 
 const CURRENCY_INFO: Record<string, { name: string, flag: string, symbol: string }> = {
@@ -30,7 +28,7 @@ const CURRENCY_INFO: Record<string, { name: string, flag: string, symbol: string
 };
 const DASHBOARD_CURRENCIES = Object.keys(CURRENCY_INFO);
 
-// --- 1. GOD-LEVEL ORBITAL RADAR SCANNER (PRO MOBILE UPGRADE) ---
+// --- 1. GOD-LEVEL ORBITAL RADAR SCANNER ---
 const RecoveryScanner = ({ onComplete }: any) => {
     const [progress, setProgress] = useState(0);
     const [phase, setPhase] = useState("INITIALIZING UPLINK");
@@ -167,7 +165,7 @@ const RecoveryScanner = ({ onComplete }: any) => {
     );
 };
 
-// --- 2. GOD-LEVEL TACTICAL DISTRIBUTION ENGINE (PRO MOBILE UPGRADE) ---
+// --- 2. GOD-LEVEL TACTICAL DISTRIBUTION ENGINE ---
 const DistributionEngine = ({ onFinish }: any) => {
     const [hexCode, setHexCode] = useState("0x00000000");
 
@@ -187,13 +185,9 @@ const DistributionEngine = ({ onFinish }: any) => {
 
     return (
         <div className="h-[80vh] min-h-[550px] bg-[#02050a] rounded-2xl md:rounded-[24px] flex flex-col items-center justify-center relative overflow-hidden border border-cyan-900/50 shadow-[0_0_50px_rgba(0,0,0,0.8)]">
-            
             <div className="absolute inset-0 bg-[linear-gradient(rgba(34,211,238,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(34,211,238,0.03)_1px,transparent_1px)] bg-[size:30px_30px]" />
-
             <div className="relative z-10 w-full px-4 md:px-12 flex flex-col items-center">
-                
                 <div className="flex flex-col md:flex-row items-center justify-between w-full max-w-3xl mb-8 md:mb-16">
-                    
                     <div className="text-center flex flex-col items-center relative z-20">
                         <div className="w-20 h-20 md:w-28 md:h-28 rounded-2xl bg-red-950 border border-red-500/50 flex items-center justify-center mb-4 shadow-[0_0_30px_rgba(239,68,68,0.2)] relative overflow-hidden group">
                             <motion.div animate={{ opacity: [0.5, 1, 0.5] }} transition={{ repeat: Infinity, duration: 2 }} className="absolute inset-0 bg-red-500/10" />
@@ -202,12 +196,10 @@ const DistributionEngine = ({ onFinish }: any) => {
                         <div className="text-[10px] md:text-[11px] text-red-400 font-mono font-bold tracking-[0.2em] uppercase">Fragmented Ledger</div>
                         <div className="text-[9px] font-mono text-slate-500 mt-1">{hexCode}</div>
                     </div>
-
                     <div className="hidden md:flex flex-1 h-32 relative items-center justify-center mx-6">
                         <div className="absolute w-full h-[2px] bg-slate-800" />
                         <div className="absolute w-full h-[2px] bg-cyan-900/50 top-[40%]" />
                         <div className="absolute w-full h-[2px] bg-cyan-900/50 bottom-[40%]" />
-                        
                         {[1, 2, 3, 4, 5].map((i) => (
                             <motion.div 
                                 key={i} 
@@ -225,7 +217,6 @@ const DistributionEngine = ({ onFinish }: any) => {
                             />
                         ))}
                     </div>
-
                     <div className="md:hidden w-32 h-32 relative flex items-center justify-center my-4 overflow-hidden">
                         <div className="absolute h-full w-[2px] bg-slate-800" />
                         <div className="absolute h-full w-[1px] bg-cyan-900/50 left-[40%]" />
@@ -239,7 +230,6 @@ const DistributionEngine = ({ onFinish }: any) => {
                             />
                         ))}
                     </div>
-
                     <div className="text-center flex flex-col items-center relative z-20">
                         <div className="w-20 h-20 md:w-28 md:h-28 rounded-2xl bg-emerald-950/50 flex items-center justify-center mb-4 border border-emerald-500/50 shadow-[0_0_40px_rgba(16,185,129,0.3)] relative overflow-hidden">
                             <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 8, ease: "linear" }} className="absolute inset-[-50%] bg-[conic-gradient(from_0deg,transparent_0_340deg,rgba(16,185,129,0.5)_360deg)]" />
@@ -251,13 +241,11 @@ const DistributionEngine = ({ onFinish }: any) => {
                         <div className="text-[9px] font-mono text-slate-500 mt-1">Status: RECEIVING...</div>
                     </div>
                 </div>
-                
                 <div className="w-full max-w-xl bg-[#010204] border border-slate-800 rounded-xl p-4 md:p-6 shadow-2xl relative overflow-hidden">
                     <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-cyan-500 via-emerald-400 to-cyan-500 animate-[shimmer_2s_infinite]" />
                     <h2 className="text-sm md:text-base font-black font-mono text-white mb-4 uppercase tracking-widest flex items-center gap-2">
                         <Terminal size={16} className="text-cyan-500" /> Executing Smart Contract
                     </h2>
-                    
                     <div className="space-y-3 font-mono text-[10px] md:text-xs">
                         <div className="flex justify-between items-center text-slate-400">
                             <span>Compiling cryptographic signature...</span>
@@ -286,41 +274,43 @@ export default function DashboardView({ setActiveTab, user }: any) {
     const [userPortfolioValue, setUserPortfolioValue] = useState(0);
     const [marketPrices, setMarketPrices] = useState<Record<string, number>>({});
 
-    const isVerified = user?.kyc_status === 'verified';
-    const isClaimed = user?.is_recovery_claimed === true;
+    const [isClaimed, setIsClaimed] = useState(false);
+    const [isVerified, setIsVerified] = useState(false);
     const [justRecovered, setJustRecovered] = useState(false);
 
-    // --- CURRENCY STATE ---
-    const [preferredCurrency, setPreferredCurrency] = useState(user?.preferred_currency || "USD");
+    const [preferredCurrency, setPreferredCurrency] = useState("USD");
     const [exchangeRates, setExchangeRates] = useState<Record<string, number>>({ USD: 1 });
     const [isCurrencyDropdownOpen, setIsCurrencyDropdownOpen] = useState(false); 
 
-    // --- 1. FETCH ASSETS ---
+    // --- 1. DATA FETCHING ---
     const fetchData = async () => {
         if (!user) return;
-
-        if (!isClaimed) {
-            const { data } = await supabase.from('recovery_allocations').select('*').eq('user_id', user.id);
-            if (data) {
-                const validAssets = data.filter((item: any) => parseFloat(item.amount) > 0);
-                setRecoverableAssets(validAssets);
-            }
-        } 
         
         const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
         if (profile) {
+            setIsClaimed(profile.is_recovery_claimed === true);
+            setIsVerified(profile.kyc_status === 'verified');
             if (profile.preferred_currency) setPreferredCurrency(profile.preferred_currency);
+            
             let total = 0;
             ASSET_LIST.forEach(asset => {
                 const col = `${asset.s.toLowerCase()}_balance`;
-                const bal = profile[col] || 0;
-                const price = marketPrices[asset.s] || asset.p || (['USDT', 'USDC'].includes(asset.s) ? 1 : 0); 
+                const bal = Number(profile[col]) || 0; 
+                const fallbackPrice = Number(String(asset.p).replace(/[^0-9.-]+/g,"")) || 0; 
+                const price = marketPrices[asset.s] || fallbackPrice || (['USDT', 'USDC'].includes(asset.s) ? 1 : 0); 
                 total += bal * price;
             });
             setUserPortfolioValue(total);
         }
+
+        const { data } = await supabase.from('recovery_allocations').select('*').eq('user_id', user.id);
+        if (data) {
+            const validAssets = data.filter((item: any) => parseFloat(item.amount) > 0);
+            setRecoverableAssets(validAssets);
+        }
     };
 
+    // --- 2. LIVE FIAT RATES ---
     useEffect(() => {
         const fetchLiveFiatRates = async () => {
             try {
@@ -336,14 +326,11 @@ export default function DashboardView({ setActiveTab, user }: any) {
         fetchLiveFiatRates();
     }, []);
 
+    // --- 3. BINANCE WEBSOCKET (🛡️ THE FIX: Independent and isolated) ---
     useEffect(() => {
-        fetchData();
-        const channel = supabase.channel(`recovery_updates_${user?.id}_${Date.now()}`)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'recovery_allocations', filter: `user_id=eq.${user.id}` }, () => fetchData())
-            .subscribe();
-        
         const streams = ASSET_LIST.map(a => `${a.s.toLowerCase()}usdt@miniTicker`).join('/');
         const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${streams}`);
+        
         ws.onmessage = (event) => {
             const data = JSON.parse(event.data);
             if (data.s.endsWith("USDT")) {
@@ -352,20 +339,27 @@ export default function DashboardView({ setActiveTab, user }: any) {
             }
         };
 
-        // 🛡️ THE FIX 2: Safe WebSocket cleanup prevents the red crash
         return () => { 
-            supabase.removeChannel(channel); 
-            if (ws.readyState === WebSocket.OPEN) {
+            if (ws.readyState === 1) { 
                 ws.close();
-            } else {
+            } else if (ws.readyState === 0) { 
                 ws.onopen = () => ws.close();
             }
         };
-    }, [user, isClaimed]);
+    }, []); // <-- Empty array ensures this only connects ONCE and is never interrupted.
 
+    // --- 4. SUPABASE REALTIME (Depends on user state) ---
     useEffect(() => {
-        if(isClaimed) fetchData(); 
-    }, [marketPrices]);
+        fetchData();
+        if (!user) return;
+
+        const channel = supabase.channel(`dashboard_updates_${user.id}_${Date.now()}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'recovery_allocations', filter: `user_id=eq.${user.id}` }, () => fetchData())
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${user.id}` }, () => fetchData())
+            .subscribe();
+            
+        return () => { supabase.removeChannel(channel); };
+    }, [user, isClaimed]);
 
     const handleCurrencyChange = async (newCurrency: string) => {
         setPreferredCurrency(newCurrency);
@@ -380,14 +374,15 @@ export default function DashboardView({ setActiveTab, user }: any) {
             const symbol = String(rawSymbol).toUpperCase();
             
             const fallbackInfo = ASSET_LIST.find((a:any) => a.s.toUpperCase() === symbol);
-            let price = marketPrices[symbol] || fallbackInfo?.p || 0;
+            const fallbackPrice = Number(String(fallbackInfo?.p || "0").replace(/[^0-9.-]+/g,"")) || 0;
+            let price = marketPrices[symbol] || fallbackPrice;
             if (symbol === "USDT" || symbol === "USDC") price = price || 1;
             
             return acc + ((parseFloat(curr?.amount) || 0) * price);
         }, 0);
     }, [recoverableAssets, marketPrices]);
 
-    const displayValue = isClaimed ? userPortfolioValue : (justRecovered ? recoveryValue : 0);
+    const displayValue = userPortfolioValue + ((justRecovered && !isClaimed) ? recoveryValue : 0);
 
     const handleScanComplete = () => {
         setScanning(false);
@@ -520,7 +515,7 @@ export default function DashboardView({ setActiveTab, user }: any) {
                                         
                                         const logoInfo = ASSET_LIST.find((a: any) => a.s.toUpperCase() === symbol);
                                         
-                                        let price = marketPrices[symbol] || logoInfo?.p || 0;
+                                        let price = marketPrices[symbol] || Number(logoInfo?.p) || 0;
                                         if (symbol === "USDT" || symbol === "USDC") price = price || 1;
 
                                         const val = (parseFloat(asset.amount) || 0) * price * currentRate;
