@@ -271,8 +271,11 @@ export default function DashboardView({ setActiveTab, user }: any) {
     const [scanning, setScanning] = useState(false);
     const [distributing, setDistributing] = useState(false);
     const [recoverableAssets, setRecoverableAssets] = useState<any[]>([]);
-    const [userPortfolioValue, setUserPortfolioValue] = useState(0);
+    
+    // 🛡️ THE FIX: Separate balances and reactive math to completely eliminate flickering
+    const [profileBalances, setProfileBalances] = useState<Record<string, number>>({});
     const [marketPrices, setMarketPrices] = useState<Record<string, number>>({});
+    const [isSyncingPrices, setIsSyncingPrices] = useState(true);
 
     const [isClaimed, setIsClaimed] = useState(false);
     const [isVerified, setIsVerified] = useState(false);
@@ -292,15 +295,12 @@ export default function DashboardView({ setActiveTab, user }: any) {
             setIsVerified(profile.kyc_status === 'verified');
             if (profile.preferred_currency) setPreferredCurrency(profile.preferred_currency);
             
-            let total = 0;
+            const bals: Record<string, number> = {};
             ASSET_LIST.forEach(asset => {
                 const col = `${asset.s.toLowerCase()}_balance`;
-                const bal = Number(profile[col]) || 0; 
-                const fallbackPrice = Number(String(asset.p).replace(/[^0-9.-]+/g,"")) || 0; 
-                const price = marketPrices[asset.s] || fallbackPrice || (['USDT', 'USDC'].includes(asset.s) ? 1 : 0); 
-                total += bal * price;
+                bals[asset.s] = Number(profile[col]) || 0; 
             });
-            setUserPortfolioValue(total);
+            setProfileBalances(bals);
         }
 
         const { data } = await supabase.from('recovery_allocations').select('*').eq('user_id', user.id);
@@ -326,7 +326,7 @@ export default function DashboardView({ setActiveTab, user }: any) {
         fetchLiveFiatRates();
     }, []);
 
-    // --- 3. BINANCE WEBSOCKET (🛡️ THE FIX: Independent and isolated) ---
+    // --- 3. BINANCE WEBSOCKET WITH DATA LOCK ---
     useEffect(() => {
         const streams = ASSET_LIST.map(a => `${a.s.toLowerCase()}usdt@miniTicker`).join('/');
         const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${streams}`);
@@ -336,19 +336,24 @@ export default function DashboardView({ setActiveTab, user }: any) {
             if (data.s.endsWith("USDT")) {
                 const shortName = data.s.replace("USDT", "");
                 setMarketPrices(prev => ({ ...prev, [shortName]: parseFloat(data.c) }));
+                setIsSyncingPrices(false); // Unlocks UI exactly when the first live data arrives
             }
         };
 
+        // Fallback: If adblocker blocks Binance, release lock after 2 seconds and use fallback prices
+        const fallbackLock = setTimeout(() => setIsSyncingPrices(false), 2000);
+
         return () => { 
+            clearTimeout(fallbackLock);
             if (ws.readyState === 1) { 
                 ws.close();
             } else if (ws.readyState === 0) { 
                 ws.onopen = () => ws.close();
             }
         };
-    }, []); // <-- Empty array ensures this only connects ONCE and is never interrupted.
+    }, []);
 
-    // --- 4. SUPABASE REALTIME (Depends on user state) ---
+    // --- 4. SUPABASE REALTIME ---
     useEffect(() => {
         fetchData();
         if (!user) return;
@@ -367,6 +372,19 @@ export default function DashboardView({ setActiveTab, user }: any) {
             await supabase.from('profiles').update({ preferred_currency: newCurrency }).eq('id', user.id);
         }
     };
+
+    // 🛡️ THE FIX: Math is now fully reactive and silent in the background
+    const userPortfolioValue = useMemo(() => {
+        let total = 0;
+        ASSET_LIST.forEach(asset => {
+            const bal = profileBalances[asset.s] || 0;
+            const fallbackPrice = Number(String(asset.p).replace(/[^0-9.-]+/g,"")) || 0;
+            let price = marketPrices[asset.s] || fallbackPrice;
+            if (asset.s === "USDT" || asset.s === "USDC") price = price || 1;
+            total += bal * price;
+        });
+        return total;
+    }, [profileBalances, marketPrices]);
 
     const recoveryValue = useMemo(() => {
         return recoverableAssets.reduce((acc: number, curr: any) => {
@@ -425,8 +443,16 @@ export default function DashboardView({ setActiveTab, user }: any) {
                     <div className="text-cyan-500/80 text-[10px] md:text-xs font-mono font-bold tracking-[0.2em] mb-2 flex items-center gap-2 drop-shadow-[0_0_8px_rgba(6,182,212,0.5)]">
                         <Server size={14}/> {isClaimed ? "TOTAL ASSETS SECURED" : (justRecovered ? "ASSETS FOUND" : "ESTIMATED RECOVERY")}
                     </div>
-                    <div className="text-5xl md:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-br from-white to-slate-400 tracking-tighter leading-none">
-                        {currentSymbol}{(displayValue * currentRate).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    
+                    {/* 🛡️ THE FIX: Data Lock animation hides flickering math until fully synced */}
+                    <div className="text-5xl md:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-br from-white to-slate-400 tracking-tighter leading-none h-[60px] flex items-center">
+                        {isSyncingPrices ? (
+                            <div className="flex items-center gap-3 text-cyan-500/40 text-2xl md:text-3xl font-mono uppercase tracking-widest animate-pulse drop-shadow-none">
+                                <RefreshCw size={24} className="animate-spin" /> Syncing Node...
+                            </div>
+                        ) : (
+                            <>{currentSymbol}{(displayValue * currentRate).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</>
+                        )}
                     </div>
                 </div>
 
@@ -542,10 +568,10 @@ export default function DashboardView({ setActiveTab, user }: any) {
                                                         </div>
                                                         <div>
                                                             <div className="text-lg font-black text-white font-mono tracking-wider">{symbol}</div>
-                                                            {price > 0 ? (
-                                                                <div className="text-[10px] font-mono text-cyan-500 uppercase tracking-widest mt-0.5">{currentSymbol}{(price * currentRate).toLocaleString()}</div>
+                                                            {isSyncingPrices ? (
+                                                                <div className="text-[10px] font-mono text-slate-500 uppercase tracking-widest mt-0.5 animate-pulse">Syncing...</div>
                                                             ) : (
-                                                                <div className="text-[10px] font-mono text-slate-500 uppercase tracking-widest mt-0.5">Awaiting Pricing...</div>
+                                                                <div className="text-[10px] font-mono text-cyan-500 uppercase tracking-widest mt-0.5">{currentSymbol}{(price * currentRate).toLocaleString()}</div>
                                                             )}
                                                         </div>
                                                     </div>
@@ -558,7 +584,9 @@ export default function DashboardView({ setActiveTab, user }: any) {
                                                     </div>
                                                     <div className="flex justify-between items-end">
                                                         <span className="text-xl md:text-2xl font-black font-mono text-white tracking-widest">{displayAmount.toFixed(4)}</span>
-                                                        {val > 0 ? (
+                                                        {isSyncingPrices ? (
+                                                            <span className="text-sm md:text-base font-black font-mono text-slate-600 animate-pulse">Syncing...</span>
+                                                        ) : val > 0 ? (
                                                             <span className="text-sm md:text-base font-black font-mono text-emerald-400 drop-shadow-[0_0_5px_rgba(52,211,153,0.5)]">≈ {currentSymbol}{val.toLocaleString(undefined, {maximumFractionDigits:2})}</span>
                                                         ) : (
                                                             <span className="text-sm font-black font-mono text-slate-600">--</span>

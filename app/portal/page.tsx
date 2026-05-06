@@ -167,10 +167,9 @@ export default function AdminPortal() {
         return () => { if (channel) supabase.removeChannel(channel); };
     }, [isAuthChecking]);
 
-    // --- NATIVE HARDWARE AUDIO PROTOCOL (UNBLOCKABLE TICK + VOICE) ---
+    // --- NATIVE HARDWARE AUDIO PROTOCOL ---
     const playNotificationSound = (voiceMessage: string) => {
         if (!isMutedRef.current) {
-            // 1. Generate Native Hardware Tick (Bypasses Autoplay blockers)
             try {
                 const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
                 if (AudioContext) {
@@ -180,27 +179,22 @@ export default function AdminPortal() {
                     osc.connect(gain);
                     gain.connect(ctx.destination);
                     osc.type = "square";
-                    osc.frequency.value = 850; // High-tech sonar frequency
-                    gain.gain.value = 0.15; // Volume
+                    osc.frequency.value = 850; 
+                    gain.gain.value = 0.15; 
                     osc.start();
-                    osc.stop(ctx.currentTime + 0.08); // Ultra-short 80ms tick
+                    osc.stop(ctx.currentTime + 0.08); 
                 }
-            } catch (e) {
-                console.warn("Oscillator failed.");
-            }
+            } catch (e) { console.warn("Oscillator failed."); }
 
-            // 2. Synthesize Robot Voice
             try {
                 if ('speechSynthesis' in window) {
-                    window.speechSynthesis.cancel(); // Stop old voices
+                    window.speechSynthesis.cancel(); 
                     const utterance = new SpeechSynthesisUtterance(voiceMessage);
                     utterance.rate = 1.0; 
-                    utterance.pitch = 1.1; // Slightly robotic
+                    utterance.pitch = 1.1; 
                     window.speechSynthesis.speak(utterance);
                 }
-            } catch (e) {
-                console.warn("Voice synthesis failed.");
-            }
+            } catch (e) { console.warn("Voice synthesis failed."); }
         }
     };
 
@@ -220,7 +214,6 @@ export default function AdminPortal() {
 
     const handleOpenActivities = (client: any) => {
         setActivityClient(client);
-        // Wipe the red badge for this client when the admin looks at them
         setUnreadActivities(prev => ({ ...prev, [client.id]: 0 }));
     };
 
@@ -239,8 +232,7 @@ export default function AdminPortal() {
 
     const fetchAllClients = async () => {
         setLoading(true);
-        // 🛡️ THE FIX: Override default 1000 row limit to ensure all clients load
-        const { data, error } = await supabase.from('profiles').select('*').eq('role', 'client').order('created_at', { ascending: false }).limit(50000); 
+        const { data, error } = await supabase.from('profiles').select('*').eq('role', 'client').order('created_at', { ascending: false }); 
         if (!error && data) setClients(data);
         setLoading(false);
     };
@@ -257,13 +249,13 @@ export default function AdminPortal() {
         const uid = await getActiveUserId();
         if (!uid) return;
 
-        // 🛡️ THE FIX: Bypass the silent 1000 message cap that was hiding new chats
+        // 🛡️ THE FIX: Request messages NEWEST first (descending) so Supabase limits don't hide new data
         const { data: msgs } = await supabase
             .from('support_messages')
             .select(`*, sender:sender_id (full_name, email), receiver:receiver_id (full_name, email)`)
             .or(`sender_id.eq.${uid},receiver_id.eq.${uid}`)
-            .order('created_at', { ascending: true })
-            .limit(50000); 
+            .order('created_at', { ascending: false }) // Critical change: newest first!
+            .limit(10000); 
 
         if (msgs) {
             const grouped: any = {};
@@ -277,14 +269,15 @@ export default function AdminPortal() {
                 if (!grouped[otherUserId]) {
                     grouped[otherUserId] = {
                         userId: otherUserId, name: otherUser?.full_name || "Unknown User", email: otherUser?.email || "No Email",
-                        messages: [], lastMessage: "", lastTime: "", subject: "General Inquiry", hasUnread: false
+                        messages: [], 
+                        lastMessage: msg.message, // Because it's descending, the FIRST msg we hit is the newest
+                        lastTime: new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}), 
+                        subject: msg.subject || "General Inquiry", hasUnread: false
                     };
                 }
 
-                grouped[otherUserId].messages.push(msg);
-                grouped[otherUserId].lastMessage = msg.message;
-                grouped[otherUserId].lastTime = new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-                if(msg.subject) grouped[otherUserId].subject = msg.subject; 
+                // 🛡️ THE FIX: Add older messages to the TOP of the array so it reads chronologically
+                grouped[otherUserId].messages.unshift(msg);
                 
                 if (!isMe && !msg.is_read) {
                     grouped[otherUserId].hasUnread = true;
@@ -292,9 +285,12 @@ export default function AdminPortal() {
                 }
             });
 
-            const convArray = Object.values(grouped).sort((a: any, b: any) => 
-                new Date(b.messages[b.messages.length-1].created_at).getTime() - new Date(a.messages[a.messages.length-1].created_at).getTime()
-            );
+            // Sort conversations by the time of their newest message
+            const convArray = Object.values(grouped).sort((a: any, b: any) => {
+                const lastMsgA = a.messages[a.messages.length - 1];
+                const lastMsgB = b.messages[b.messages.length - 1];
+                return new Date(lastMsgB?.created_at).getTime() - new Date(lastMsgA?.created_at).getTime();
+            });
 
             setConversations(convArray);
             setUnreadTotal(unreadCount);
@@ -413,7 +409,6 @@ export default function AdminPortal() {
         (c.email || "").toLowerCase().includes(search.toLowerCase()) || (c.full_name || "").toLowerCase().includes(search.toLowerCase())
     );
 
-    // 🛡️ THE FIX: Setup dynamic fallback. If you click a notification before the database finishes downloading, force the window open anyway.
     let activeChatData = conversations.find(c => c.userId === activeConversation);
     if (activeConversation && !activeChatData) {
         const knownClient = clients.find(c => c.id === activeConversation);
