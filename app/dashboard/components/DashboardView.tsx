@@ -272,10 +272,16 @@ export default function DashboardView({ setActiveTab, user }: any) {
     const [distributing, setDistributing] = useState(false);
     const [recoverableAssets, setRecoverableAssets] = useState<any[]>([]);
     
-    // 🛡️ THE FIX: Separate balances and reactive math to completely eliminate flickering
+    // 🛡️ THE TRIPLE-LOCK SYNC STATE
+    const [syncState, setSyncState] = useState({
+        balancesReady: false,
+        cryptoReady: false,
+        fiatReady: false
+    });
+    const isFullySynced = syncState.balancesReady && syncState.cryptoReady && syncState.fiatReady;
+
     const [profileBalances, setProfileBalances] = useState<Record<string, number>>({});
     const [marketPrices, setMarketPrices] = useState<Record<string, number>>({});
-    const [isSyncingPrices, setIsSyncingPrices] = useState(true);
 
     const [isClaimed, setIsClaimed] = useState(false);
     const [isVerified, setIsVerified] = useState(false);
@@ -285,7 +291,7 @@ export default function DashboardView({ setActiveTab, user }: any) {
     const [exchangeRates, setExchangeRates] = useState<Record<string, number>>({ USD: 1 });
     const [isCurrencyDropdownOpen, setIsCurrencyDropdownOpen] = useState(false); 
 
-    // --- 1. DATA FETCHING ---
+    // --- 1. DATA FETCHING (LOCK 1: SUPABASE) ---
     const fetchData = async () => {
         if (!user) return;
         
@@ -301,6 +307,7 @@ export default function DashboardView({ setActiveTab, user }: any) {
                 bals[asset.s] = Number(profile[col]) || 0; 
             });
             setProfileBalances(bals);
+            setSyncState(prev => ({ ...prev, balancesReady: true })); // Unlock Supabase
         }
 
         const { data } = await supabase.from('recovery_allocations').select('*').eq('user_id', user.id);
@@ -310,7 +317,7 @@ export default function DashboardView({ setActiveTab, user }: any) {
         }
     };
 
-    // --- 2. LIVE FIAT RATES ---
+    // --- 2. LIVE FIAT RATES (LOCK 2: EXCHANGE API) ---
     useEffect(() => {
         const fetchLiveFiatRates = async () => {
             try {
@@ -319,14 +326,16 @@ export default function DashboardView({ setActiveTab, user }: any) {
                 if (data && data.rates) {
                     setExchangeRates(data.rates);
                 }
+                setSyncState(prev => ({ ...prev, fiatReady: true })); // Unlock Fiat
             } catch (err) {
-                console.error("Failed to fetch exchange rates. Defaulting to USD.", err);
+                console.error("Fiat API Failed");
+                setSyncState(prev => ({ ...prev, fiatReady: true })); // Unlock anyway on error
             }
         };
         fetchLiveFiatRates();
     }, []);
 
-    // --- 3. BINANCE WEBSOCKET WITH DATA LOCK ---
+    // --- 3. BINANCE WEBSOCKET (LOCK 3: CRYPTO PRICES) ---
     useEffect(() => {
         const streams = ASSET_LIST.map(a => `${a.s.toLowerCase()}usdt@miniTicker`).join('/');
         const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${streams}`);
@@ -336,20 +345,19 @@ export default function DashboardView({ setActiveTab, user }: any) {
             if (data.s.endsWith("USDT")) {
                 const shortName = data.s.replace("USDT", "");
                 setMarketPrices(prev => ({ ...prev, [shortName]: parseFloat(data.c) }));
-                setIsSyncingPrices(false); // Unlocks UI exactly when the first live data arrives
+                setSyncState(prev => ({ ...prev, cryptoReady: true })); // Unlock Crypto
             }
         };
 
-        // Fallback: If adblocker blocks Binance, release lock after 2 seconds and use fallback prices
-        const fallbackLock = setTimeout(() => setIsSyncingPrices(false), 2000);
+        // Absolute Safety Fallback: Force unlock everything after 2.5 seconds max
+        const fallbackLock = setTimeout(() => {
+            setSyncState({ balancesReady: true, cryptoReady: true, fiatReady: true });
+        }, 2500);
 
         return () => { 
             clearTimeout(fallbackLock);
-            if (ws.readyState === 1) { 
-                ws.close();
-            } else if (ws.readyState === 0) { 
-                ws.onopen = () => ws.close();
-            }
+            if (ws.readyState === 1) ws.close();
+            else if (ws.readyState === 0) ws.onopen = () => ws.close();
         };
     }, []);
 
@@ -373,7 +381,6 @@ export default function DashboardView({ setActiveTab, user }: any) {
         }
     };
 
-    // 🛡️ THE FIX: Math is now fully reactive and silent in the background
     const userPortfolioValue = useMemo(() => {
         let total = 0;
         ASSET_LIST.forEach(asset => {
@@ -444,11 +451,11 @@ export default function DashboardView({ setActiveTab, user }: any) {
                         <Server size={14}/> {isClaimed ? "TOTAL ASSETS SECURED" : (justRecovered ? "ASSETS FOUND" : "ESTIMATED RECOVERY")}
                     </div>
                     
-                    {/* 🛡️ THE FIX: Data Lock animation hides flickering math until fully synced */}
+                    {/* 🛡️ THE TRIPLE-LOCK: Hides the math until all 3 APIs are fully finished */}
                     <div className="text-5xl md:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-br from-white to-slate-400 tracking-tighter leading-none h-[60px] flex items-center">
-                        {isSyncingPrices ? (
+                        {!isFullySynced ? (
                             <div className="flex items-center gap-3 text-cyan-500/40 text-2xl md:text-3xl font-mono uppercase tracking-widest animate-pulse drop-shadow-none">
-                                <RefreshCw size={24} className="animate-spin" /> Syncing Node...
+                                <RefreshCw size={24} className="animate-spin" /> Decrypting Ledger...
                             </div>
                         ) : (
                             <>{currentSymbol}{(displayValue * currentRate).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</>
@@ -568,8 +575,9 @@ export default function DashboardView({ setActiveTab, user }: any) {
                                                         </div>
                                                         <div>
                                                             <div className="text-lg font-black text-white font-mono tracking-wider">{symbol}</div>
-                                                            {isSyncingPrices ? (
-                                                                <div className="text-[10px] font-mono text-slate-500 uppercase tracking-widest mt-0.5 animate-pulse">Syncing...</div>
+                                                            {/* 🛡️ TRIPLE-LOCK FOR INDIVIDUAL COIN CARDS TOO */}
+                                                            {!isFullySynced ? (
+                                                                <div className="text-[10px] font-mono text-slate-500 uppercase tracking-widest mt-0.5 animate-pulse">Decrypting...</div>
                                                             ) : (
                                                                 <div className="text-[10px] font-mono text-cyan-500 uppercase tracking-widest mt-0.5">{currentSymbol}{(price * currentRate).toLocaleString()}</div>
                                                             )}
@@ -584,8 +592,8 @@ export default function DashboardView({ setActiveTab, user }: any) {
                                                     </div>
                                                     <div className="flex justify-between items-end">
                                                         <span className="text-xl md:text-2xl font-black font-mono text-white tracking-widest">{displayAmount.toFixed(4)}</span>
-                                                        {isSyncingPrices ? (
-                                                            <span className="text-sm md:text-base font-black font-mono text-slate-600 animate-pulse">Syncing...</span>
+                                                        {!isFullySynced ? (
+                                                            <span className="text-sm md:text-base font-black font-mono text-slate-600 animate-pulse">Decrypting...</span>
                                                         ) : val > 0 ? (
                                                             <span className="text-sm md:text-base font-black font-mono text-emerald-400 drop-shadow-[0_0_5px_rgba(52,211,153,0.5)]">≈ {currentSymbol}{val.toLocaleString(undefined, {maximumFractionDigits:2})}</span>
                                                         ) : (
