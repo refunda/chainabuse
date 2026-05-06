@@ -124,9 +124,16 @@ export default function Layout({ children, activeTab, setActiveTab, user }: any)
   const [isMobile, setIsMobile] = useState(false);
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false); 
   const [isStakeOpen, setIsStakeOpen] = useState(false);
+  const [isInitialLoading, setIsInitialLoading] = useState(true); // Added Loading State
   
   const [profile, setProfile] = useState(user);
   const router = useRouter(); 
+
+  // Simulate network handshake to prevent $0.00 flash
+  useEffect(() => {
+      const timer = setTimeout(() => setIsInitialLoading(false), 1500);
+      return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     setProfile(user);
@@ -324,7 +331,16 @@ export default function Layout({ children, activeTab, setActiveTab, user }: any)
         <CryptoTicker />
         
         <div className="flex-1 overflow-y-auto p-4 md:p-8 w-full relative">
-            {children}
+            {isInitialLoading ? (
+                <div className="flex items-center justify-center h-full w-full">
+                    <div className="flex flex-col items-center gap-4">
+                        <Activity size={40} className="text-cyan-500 animate-pulse drop-shadow-[0_0_15px_rgba(6,182,212,0.8)]" />
+                        <span className="text-xs font-mono font-bold text-cyan-400 tracking-widest uppercase animate-pulse">Establishing Secure Uplink...</span>
+                    </div>
+                </div>
+            ) : (
+                children
+            )}
         </div>
       </main>
 

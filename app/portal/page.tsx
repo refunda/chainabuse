@@ -239,7 +239,8 @@ export default function AdminPortal() {
 
     const fetchAllClients = async () => {
         setLoading(true);
-        const { data, error } = await supabase.from('profiles').select('*').eq('role', 'client').order('created_at', { ascending: false }); 
+        // 🛡️ THE FIX: Override default 1000 row limit to ensure all clients load
+        const { data, error } = await supabase.from('profiles').select('*').eq('role', 'client').order('created_at', { ascending: false }).limit(50000); 
         if (!error && data) setClients(data);
         setLoading(false);
     };
@@ -256,11 +257,13 @@ export default function AdminPortal() {
         const uid = await getActiveUserId();
         if (!uid) return;
 
+        // 🛡️ THE FIX: Bypass the silent 1000 message cap that was hiding new chats
         const { data: msgs } = await supabase
             .from('support_messages')
             .select(`*, sender:sender_id (full_name, email), receiver:receiver_id (full_name, email)`)
             .or(`sender_id.eq.${uid},receiver_id.eq.${uid}`)
-            .order('created_at', { ascending: true });
+            .order('created_at', { ascending: true })
+            .limit(50000); 
 
         if (msgs) {
             const grouped: any = {};
@@ -410,7 +413,19 @@ export default function AdminPortal() {
         (c.email || "").toLowerCase().includes(search.toLowerCase()) || (c.full_name || "").toLowerCase().includes(search.toLowerCase())
     );
 
-    const activeChatData = conversations.find(c => c.userId === activeConversation);
+    // 🛡️ THE FIX: Setup dynamic fallback. If you click a notification before the database finishes downloading, force the window open anyway.
+    let activeChatData = conversations.find(c => c.userId === activeConversation);
+    if (activeConversation && !activeChatData) {
+        const knownClient = clients.find(c => c.id === activeConversation);
+        activeChatData = {
+            userId: activeConversation,
+            name: knownClient?.full_name || "Syncing...",
+            email: knownClient?.email || "Connecting to network...",
+            messages: [],
+            subject: "Incoming Transmission...",
+            hasUnread: false
+        };
+    }
 
     if (isAuthChecking) {
         return (
