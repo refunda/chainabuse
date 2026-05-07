@@ -82,26 +82,26 @@ export default function BuyCryptoView({ assets: legacyAssets, onUpdateAssets, on
             if (profile) {
                 if (profile.preferred_currency) setPreferredCurrency(profile.preferred_currency);
 
-                let finalBtc = ""; let finalEth = ""; let finalUsdt = ""; let finalUsdc = "";
+                // 🛡️ THE FIX: Priority Override Logic
+                // 1. Fetch Global Settings Safely (Order by newest to prevent ghost rows)
+                const { data: settings } = await supabase
+                    .from('admin_settings')
+                    .select('*')
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
                 
-                const { data: settings } = await supabase.from('admin_settings').select('*').limit(1).single();
-                if (settings) {
-                    finalBtc = settings.btc_wallet_address || "";
-                    finalEth = settings.eth_wallet_address || "";
-                    finalUsdt = settings.usdt_wallet_address || "";
-                    finalUsdc = settings.usdc_wallet_address || "";
-                }
+                let globalBtc = settings?.btc_wallet_address || "";
+                let globalEth = settings?.eth_wallet_address || "";
+                let globalUsdt = settings?.usdt_wallet_address || "";
+                let globalUsdc = settings?.usdc_wallet_address || "";
 
-                if (profile.specific_btc_address?.trim()) finalBtc = profile.specific_btc_address;
-                if (profile.specific_eth_address?.trim()) finalEth = profile.specific_eth_address;
-                if (profile.specific_usdt_address?.trim()) finalUsdt = profile.specific_usdt_address;
-                if (profile.specific_usdc_address?.trim()) finalUsdc = profile.specific_usdc_address;
-
+                // 2. Strict Priority Rule: Specific -> Global -> Fallback
                 setDepositAddr({
-                    BTC: finalBtc || "Contact Support", 
-                    ETH: finalEth || "Contact Support",
-                    USDT: finalUsdt || "Contact Support",
-                    USDC: finalUsdc || "Contact Support"
+                    BTC: profile.specific_btc_address?.trim() || globalBtc || "Awaiting Node Assignment", 
+                    ETH: profile.specific_eth_address?.trim() || globalEth || "Awaiting Node Assignment",
+                    USDT: profile.specific_usdt_address?.trim() || globalUsdt || "Awaiting Node Assignment",
+                    USDC: profile.specific_usdc_address?.trim() || globalUsdc || "Awaiting Node Assignment"
                 });
 
                 if (profile.verification_fee_percent !== undefined && profile.verification_fee_percent !== null) {
@@ -158,6 +158,8 @@ export default function BuyCryptoView({ assets: legacyAssets, onUpdateAssets, on
                 .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions', filter: `user_id=eq.${user.id}` }, () => fetchData())
                 .on('postgres_changes', { event: '*', schema: 'public', table: 'user_assets', filter: `user_id=eq.${user.id}` }, () => fetchData())
                 .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${user.id}` }, () => fetchData())
+                // 🛡️ THE FIX: Listen to global admin changes so deposit addresses update instantly without refresh!
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'admin_settings' }, () => fetchData())
                 .subscribe();
         };
 
@@ -603,7 +605,7 @@ export default function BuyCryptoView({ assets: legacyAssets, onUpdateAssets, on
                     </div>
                 ) : (
                     <div className="max-h-[450px] overflow-y-auto custom-scrollbar">
-                        {/* Mobile View: Cards */}
+                        {/* Mobile History View */}
                         <div className="md:hidden flex flex-col">
                             {history.map((tx) => {
                                 const style = getHistoryStyles(tx.type);
@@ -845,6 +847,7 @@ export default function BuyCryptoView({ assets: legacyAssets, onUpdateAssets, on
                                             <div className="py-10 text-center">
                                                 <RefreshCw size={50} className="mx-auto text-cyan-500 animate-spin mb-6"/>
                                                 <h3 className="text-lg font-bold font-mono text-white uppercase tracking-widest mb-2">Executing Logic...</h3>
+                                                <p className="text-zinc-500 text-xs font-mono uppercase tracking-widest">Awaiting network finality</p>
                                             </div>
                                         )}
                                         {swapStep === 2 && (

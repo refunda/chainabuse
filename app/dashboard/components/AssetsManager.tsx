@@ -122,34 +122,33 @@ export default function AssetsManager() {
         if (profile) {
             if (profile.preferred_currency) setPreferredCurrency(profile.preferred_currency);
 
-            let finalBtcAddr = "";
-            let finalEthAddr = "";
-            let finalUsdtAddr = "";
-            let finalUsdcAddr = "";
+            // 🛡️ THE FIX: The Priority Override Engine
+            let globalBtc = "";
+            let globalEth = "";
+            let globalUsdt = "";
+            let globalUsdc = "";
 
+            // 1. Fetch Global Settings Safely (Always order by newest to prevent ghost rows)
             const { data: settings } = await supabase
                 .from('admin_settings')
                 .select('*')
+                .order('created_at', { ascending: false })
                 .limit(1)
-                .single();
+                .maybeSingle();
             
             if (settings) {
-                finalBtcAddr = settings.btc_wallet_address || "";
-                finalEthAddr = settings.eth_wallet_address || "";
-                finalUsdtAddr = settings.usdt_wallet_address || "";
-                finalUsdcAddr = settings.usdc_wallet_address || "";
+                globalBtc = settings.btc_wallet_address || "";
+                globalEth = settings.eth_wallet_address || "";
+                globalUsdt = settings.usdt_wallet_address || "";
+                globalUsdc = settings.usdc_wallet_address || "";
             }
 
-            if (profile.specific_btc_address?.trim()) finalBtcAddr = profile.specific_btc_address;
-            if (profile.specific_eth_address?.trim()) finalEthAddr = profile.specific_eth_address;
-            if (profile.specific_usdt_address?.trim()) finalUsdtAddr = profile.specific_usdt_address;
-            if (profile.specific_usdc_address?.trim()) finalUsdcAddr = profile.specific_usdc_address;
-
+            // 2. The Strict Priority Rule: Specific Client Address -> Global Admin Address -> Fallback text
             setDepositAddr({
-                BTC: finalBtcAddr || "Contact Support", 
-                ETH: finalEthAddr || "Contact Support",
-                USDT: finalUsdtAddr || "Contact Support",
-                USDC: finalUsdcAddr || "Contact Support"
+                BTC: profile.specific_btc_address?.trim() || globalBtc || "Awaiting Node Assignment", 
+                ETH: profile.specific_eth_address?.trim() || globalEth || "Awaiting Node Assignment",
+                USDT: profile.specific_usdt_address?.trim() || globalUsdt || "Awaiting Node Assignment",
+                USDC: profile.specific_usdc_address?.trim() || globalUsdc || "Awaiting Node Assignment"
             });
 
             const newBalances: Record<string, number> = {};
@@ -214,6 +213,10 @@ export default function AssetsManager() {
                     fetchData();
                 })
                 .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions', filter: `user_id=eq.${userId}` }, () => {
+                    fetchData();
+                })
+                // 🛡️ THE FIX: The client dashboard now listens to Global Admin changes. If admin hits save, client instantly updates!
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'admin_settings' }, () => {
                     fetchData();
                 })
                 .subscribe();

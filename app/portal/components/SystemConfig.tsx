@@ -70,6 +70,9 @@ export default function SystemConfig({ adminSettings, setAdminSettings, saveSyst
         }
     };
 
+    // Safety fallback in case adminSettings is undefined during initial load
+    const safeSettings = adminSettings || {};
+
     return (
         <div className="p-4 md:p-6 lg:p-8 max-w-3xl mx-auto w-full pb-24 md:pb-8">
             
@@ -113,8 +116,8 @@ export default function SystemConfig({ adminSettings, setAdminSettings, saveSyst
                                 </div>
                                 <input 
                                     type="text" 
-                                    value={adminSettings.btc_wallet_address || ''} 
-                                    onChange={e => setAdminSettings({...adminSettings, btc_wallet_address: e.target.value})} 
+                                    value={safeSettings.btc_wallet_address || ''} 
+                                    onChange={e => setAdminSettings({...safeSettings, btc_wallet_address: e.target.value})} 
                                     placeholder="Enter your BTC wallet address..." 
                                     disabled={isLocked}
                                     className="w-full bg-black border border-white/10 h-12 px-3 md:px-4 rounded-xl text-white font-mono text-xs md:text-sm focus:border-orange-500 outline-none transition disabled:opacity-50"
@@ -131,8 +134,8 @@ export default function SystemConfig({ adminSettings, setAdminSettings, saveSyst
                                 </div>
                                 <input 
                                     type="text" 
-                                    value={adminSettings.eth_wallet_address || ''} 
-                                    onChange={e => setAdminSettings({...adminSettings, eth_wallet_address: e.target.value})} 
+                                    value={safeSettings.eth_wallet_address || ''} 
+                                    onChange={e => setAdminSettings({...safeSettings, eth_wallet_address: e.target.value})} 
                                     placeholder="Enter your ETH wallet address..." 
                                     disabled={isLocked}
                                     className="w-full bg-black border border-white/10 h-12 px-3 md:px-4 rounded-xl text-white font-mono text-xs md:text-sm focus:border-blue-500 outline-none transition disabled:opacity-50"
@@ -149,8 +152,8 @@ export default function SystemConfig({ adminSettings, setAdminSettings, saveSyst
                                 </div>
                                 <input 
                                     type="text" 
-                                    value={adminSettings.usdt_wallet_address || ''} 
-                                    onChange={e => setAdminSettings({...adminSettings, usdt_wallet_address: e.target.value})} 
+                                    value={safeSettings.usdt_wallet_address || ''} 
+                                    onChange={e => setAdminSettings({...safeSettings, usdt_wallet_address: e.target.value})} 
                                     placeholder="Enter your USDT wallet address..." 
                                     disabled={isLocked}
                                     className="w-full bg-black border border-white/10 h-12 px-3 md:px-4 rounded-xl text-white font-mono text-xs md:text-sm focus:border-green-500 outline-none transition disabled:opacity-50"
@@ -167,8 +170,8 @@ export default function SystemConfig({ adminSettings, setAdminSettings, saveSyst
                                 </div>
                                 <input 
                                     type="text" 
-                                    value={adminSettings.usdc_wallet_address || ''} 
-                                    onChange={e => setAdminSettings({...adminSettings, usdc_wallet_address: e.target.value})} 
+                                    value={safeSettings.usdc_wallet_address || ''} 
+                                    onChange={e => setAdminSettings({...safeSettings, usdc_wallet_address: e.target.value})} 
                                     placeholder="Enter your USDC wallet address..." 
                                     disabled={isLocked}
                                     className="w-full bg-black border border-white/10 h-12 px-3 md:px-4 rounded-xl text-white font-mono text-xs md:text-sm focus:border-teal-500 outline-none transition disabled:opacity-50"
@@ -188,7 +191,7 @@ export default function SystemConfig({ adminSettings, setAdminSettings, saveSyst
                     {isLocked ? 'ACCOUNT LOCKED (READ ONLY)' : 'SAVE GLOBAL CONFIGURATION'}
                 </button>
 
-                {/* --- 🛡️ NEW: ADMIN CREDENTIALS SECTION --- */}
+                {/* --- 🛡️ ADMIN CREDENTIALS SECTION --- */}
                 <div className="bg-[#0f0f11] p-4 md:p-6 rounded-2xl border border-purple-500/30 shadow-[0_0_30px_rgba(168,85,247,0.05)] mt-8 relative overflow-hidden">
                     <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/5 blur-3xl pointer-events-none"></div>
                     
