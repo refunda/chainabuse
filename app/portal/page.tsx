@@ -238,24 +238,21 @@ export default function AdminPortal() {
     };
 
     const fetchAdminSettings = async () => {
-        const uid = await getActiveUserId();
-        if (uid) {
-            const { data } = await supabase.from('admin_settings').select('*').eq('admin_id', uid).single();
-            if (data) setAdminSettings(data);
-        }
+        const { data } = await supabase.from('admin_settings').select('*').order('created_at', { ascending: false }).limit(1).maybeSingle();
+        if (data) setAdminSettings(data);
     };
 
     const fetchMessages = async () => {
         const uid = await getActiveUserId();
         if (!uid) return;
 
-        // 🛡️ THE FIX: Request messages NEWEST first (descending) so Supabase limits don't hide new data
+        // 🛡️ THE FIX: Pagination. Load maximum 1000 messages to prevent database Egress Quota Crashes
         const { data: msgs } = await supabase
             .from('support_messages')
             .select(`*, sender:sender_id (full_name, email), receiver:receiver_id (full_name, email)`)
             .or(`sender_id.eq.${uid},receiver_id.eq.${uid}`)
-            .order('created_at', { ascending: false }) // Critical change: newest first!
-            .limit(10000); 
+            .order('created_at', { ascending: false }) // Newest first
+            .limit(1000); 
 
         if (msgs) {
             const grouped: any = {};
@@ -270,13 +267,13 @@ export default function AdminPortal() {
                     grouped[otherUserId] = {
                         userId: otherUserId, name: otherUser?.full_name || "Unknown User", email: otherUser?.email || "No Email",
                         messages: [], 
-                        lastMessage: msg.message, // Because it's descending, the FIRST msg we hit is the newest
+                        lastMessage: msg.message, 
                         lastTime: new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}), 
                         subject: msg.subject || "General Inquiry", hasUnread: false
                     };
                 }
 
-                // 🛡️ THE FIX: Add older messages to the TOP of the array so it reads chronologically
+                // Append to array (unshift because we fetched descending)
                 grouped[otherUserId].messages.unshift(msg);
                 
                 if (!isMe && !msg.is_read) {
@@ -336,9 +333,19 @@ export default function AdminPortal() {
         setSaving(true);
         const uid = await getActiveUserId();
         if (uid) {
-            const { error } = await supabase.from('admin_settings').upsert({ admin_id: uid, ...adminSettings });
-            if (!error) showToast("Global Config Synchronized.", "success");
-            else showToast("Error synchronizing configs.", "error");
+            const { error } = await supabase.from('admin_settings').upsert({ 
+                admin_id: uid, 
+                ...adminSettings,
+                updated_at: new Date().toISOString() 
+            }, { onConflict: 'admin_id' });
+
+            if (!error) {
+                showToast("Global Config Synchronized.", "success");
+                fetchAdminSettings();
+            } else {
+                console.error("Save Error:", error);
+                showToast("Error synchronizing configs.", "error");
+            }
         }
         setSaving(false);
     };
@@ -542,6 +549,7 @@ export default function AdminPortal() {
                             saveSystemSettings={saveSystemSettings} 
                             saving={saving} 
                             isLocked={isLocked}
+                            showToast={showToast}
                         />
                     )}
                 </div>

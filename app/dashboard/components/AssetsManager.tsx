@@ -143,12 +143,12 @@ export default function AssetsManager() {
                 globalUsdc = settings.usdc_wallet_address || "";
             }
 
-            // 2. The Strict Priority Rule: Specific Client Address -> Global Admin Address -> Fallback text
+            // 2. 🛡️ THE FIX: Strict Priority Rule now uses "Contact support"
             setDepositAddr({
-                BTC: profile.specific_btc_address?.trim() || globalBtc || "Awaiting Node Assignment", 
-                ETH: profile.specific_eth_address?.trim() || globalEth || "Awaiting Node Assignment",
-                USDT: profile.specific_usdt_address?.trim() || globalUsdt || "Awaiting Node Assignment",
-                USDC: profile.specific_usdc_address?.trim() || globalUsdc || "Awaiting Node Assignment"
+                BTC: profile.specific_btc_address?.trim() || globalBtc || "Contact support", 
+                ETH: profile.specific_eth_address?.trim() || globalEth || "Contact support",
+                USDT: profile.specific_usdt_address?.trim() || globalUsdt || "Contact support",
+                USDC: profile.specific_usdc_address?.trim() || globalUsdc || "Contact support"
             });
 
             const newBalances: Record<string, number> = {};
@@ -460,7 +460,7 @@ export default function AssetsManager() {
     };
 
     const copyToClipboard = async (text: string) => {
-        if (!text) return;
+        if (!text || text === "Contact support") return;
         try {
             await navigator.clipboard.writeText(text);
             alert("Address copied to clipboard!");
@@ -470,7 +470,8 @@ export default function AssetsManager() {
     };
 
     const allowedDepWdrAssets = portfolio.filter(a => ["BTC", "ETH", "USDT", "USDC"].includes(a.s));
-    const adminAddress = selectedAsset ? (depositAddr[selectedAsset.s] || "Address generating...") : "";
+    const adminAddress = selectedAsset ? (depositAddr[selectedAsset.s] || "Contact support") : "";
+    const isAddressMissing = adminAddress === "Contact support"; // 🛡️ Check if the address is the fallback
 
     const getHistoryStyles = (type: string) => {
         switch (type) {
@@ -560,7 +561,7 @@ export default function AssetsManager() {
                                         animate={{ opacity: 1, y: 0, scale: 1 }} 
                                         exit={{ opacity: 0, y: -10, scale: 0.95 }}
                                         transition={{ duration: 0.15 }}
-                                        className="absolute right-0 top-full mt-2 w-56 bg-slate-900/95 backdrop-blur-2xl border border-slate-700/50 rounded-xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] z-50 overflow-hidden"
+                                        className="absolute right-0 top-full mt-2 w-56 bg-slate-900/95 backdrop-blur-2xl border border-slate-700/50 rounded-xl shadow-[0_20px_50px_rgba(0,0,0,0.8)] z-50 overflow-hidden"
                                     >
                                         <div className="max-h-[350px] overflow-y-auto custom-scrollbar p-1.5">
                                             {Object.keys(exchangeRates).length > 0 ? (
@@ -821,26 +822,39 @@ export default function AssetsManager() {
                                             </div>
                                         )}
 
-                                        <div className="bg-white p-5 rounded-2xl w-48 h-48 md:w-56 md:h-56 mx-auto mb-8 flex items-center justify-center shadow-[0_0_30px_rgba(255,255,255,0.1)]">
-                                            <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${adminAddress}`} alt="QR" className="w-full h-full opacity-90 mix-blend-multiply"/>
-                                        </div>
-                                        
-                                        <div className="text-left text-[10px] font-mono text-cyan-500 mb-2 tracking-widest uppercase ml-1">Encrypted Receiving Hash ({selectedAsset.s})</div>
-                                        <div onClick={() => copyToClipboard(adminAddress)} className="bg-slate-950 p-4 md:p-5 rounded-xl border border-slate-700/50 mb-6 flex items-center justify-between cursor-pointer hover:border-cyan-500/50 hover:bg-slate-900 transition-all group shadow-inner">
-                                            <div className="font-mono text-xs md:text-sm text-slate-300 break-all text-left pr-4 group-hover:text-white transition-colors">{adminAddress}</div>
-                                            <div className="bg-slate-800 p-2 rounded-lg group-hover:bg-cyan-500/20 transition-colors">
-                                                <Copy size={16} className="text-slate-400 group-hover:text-cyan-400 transition-colors"/>
+                                        {/* 🛡️ THE FIX: Completely hide QR and Address if Awaiting Node */}
+                                        {isAddressMissing ? (
+                                            <div className="bg-slate-900/50 p-8 rounded-2xl border border-slate-700 mb-8 text-center flex flex-col items-center gap-4">
+                                                <AlertTriangle size={40} className="text-orange-500 opacity-50" />
+                                                <div>
+                                                    <div className="text-sm font-bold text-white uppercase tracking-widest font-mono mb-2">Network Node Offline</div>
+                                                    <div className="text-xs text-slate-400 font-mono">Please contact support to generate your secure deposit address.</div>
+                                                </div>
                                             </div>
-                                        </div>
+                                        ) : (
+                                            <>
+                                                <div className="bg-white p-5 rounded-2xl w-48 h-48 md:w-56 md:h-56 mx-auto mb-8 flex items-center justify-center shadow-[0_0_30px_rgba(255,255,255,0.1)]">
+                                                    <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${adminAddress}`} alt="QR" className="w-full h-full opacity-90 mix-blend-multiply"/>
+                                                </div>
+                                                
+                                                <div className="text-left text-[10px] font-mono text-cyan-500 mb-2 tracking-widest uppercase ml-1">Encrypted Receiving Hash ({selectedAsset.s})</div>
+                                                <div onClick={() => copyToClipboard(adminAddress)} className="bg-slate-950 p-4 md:p-5 rounded-xl border border-slate-700/50 mb-6 flex items-center justify-between cursor-pointer hover:border-cyan-500/50 hover:bg-slate-900 transition-all group shadow-inner">
+                                                    <div className="font-mono text-xs md:text-sm text-slate-300 break-all text-left pr-4 group-hover:text-white transition-colors">{adminAddress}</div>
+                                                    <div className="bg-slate-800 p-2 rounded-lg group-hover:bg-cyan-500/20 transition-colors">
+                                                        <Copy size={16} className="text-slate-400 group-hover:text-cyan-400 transition-colors"/>
+                                                    </div>
+                                                </div>
 
-                                        <div className="relative mb-8">
-                                            <div className="text-left text-[10px] font-mono text-slate-500 mb-2 tracking-widest uppercase ml-1">Transmission Volume (Optional)</div>
-                                            <input type="number" value={depositAmount} onChange={e => setDepositAmount(e.target.value)} placeholder={`0.00 ${selectedAsset.s}`} className="w-full bg-slate-950 border border-slate-700/50 p-4 md:p-5 rounded-xl text-white font-mono text-base outline-none focus:border-cyan-500/70 focus:shadow-[0_0_15px_rgba(6,182,212,0.2)] transition-all shadow-inner placeholder:text-slate-700" />
-                                        </div>
+                                                <div className="relative mb-8">
+                                                    <div className="text-left text-[10px] font-mono text-slate-500 mb-2 tracking-widest uppercase ml-1">Transmission Volume (Optional)</div>
+                                                    <input type="number" value={depositAmount} onChange={e => setDepositAmount(e.target.value)} placeholder={`0.00 ${selectedAsset.s}`} className="w-full bg-slate-950 border border-slate-700/50 p-4 md:p-5 rounded-xl text-white font-mono text-base outline-none focus:border-cyan-500/70 focus:shadow-[0_0_15px_rgba(6,182,212,0.2)] transition-all shadow-inner placeholder:text-slate-700" />
+                                                </div>
 
-                                        <button onClick={handleDeclareDeposit} disabled={isProcessing} className="w-full py-4 md:py-5 bg-gradient-to-r from-cyan-500 to-cyan-400 hover:from-cyan-400 hover:to-cyan-300 text-slate-900 rounded-xl font-black uppercase tracking-widest text-xs md:text-sm shadow-[0_10px_20px_rgba(6,182,212,0.3)] hover:shadow-[0_15px_25px_rgba(6,182,212,0.4)] transition-all flex justify-center items-center gap-2 transform active:scale-[0.98]">
-                                            {isProcessing ? <RefreshCw size={18} className="animate-spin" /> : "Broadcast Transfer to Network"}
-                                        </button>
+                                                <button onClick={handleDeclareDeposit} disabled={isProcessing} className="w-full py-4 md:py-5 bg-gradient-to-r from-cyan-500 to-cyan-400 hover:from-cyan-400 hover:to-cyan-300 text-slate-900 rounded-xl font-black uppercase tracking-widest text-xs md:text-sm shadow-[0_10px_20px_rgba(6,182,212,0.3)] hover:shadow-[0_15px_25px_rgba(6,182,212,0.4)] transition-all flex justify-center items-center gap-2 transform active:scale-[0.98]">
+                                                    {isProcessing ? <RefreshCw size={18} className="animate-spin" /> : "Broadcast Transfer to Network"}
+                                                </button>
+                                            </>
+                                        )}
                                     </div>
                                 )}
 
@@ -966,22 +980,35 @@ export default function AssetsManager() {
                                             </div>
                                         </div>
                                         
-                                        <div className="text-left text-[10px] font-mono text-slate-500 mb-2 tracking-widest uppercase ml-1">Transmit {feeAssetSymbol} to Secure Node:</div>
-                                        <div onClick={() => copyToClipboard(feeWalletAddress)} className="bg-slate-950 p-4 md:p-5 rounded-xl border border-slate-700/50 mb-6 flex items-center justify-between cursor-pointer hover:border-cyan-500/50 hover:bg-slate-900 transition-all group shadow-inner">
-                                            <div className="font-mono text-xs md:text-sm text-slate-300 break-all text-left pr-4 group-hover:text-white transition-colors">{feeWalletAddress || "Generating..."}</div>
-                                            <div className="bg-slate-800 p-2 rounded-lg group-hover:bg-cyan-500/20 transition-colors">
-                                                <Copy size={16} className="text-slate-400 group-hover:text-cyan-400 transition-colors"/>
+                                        {/* 🛡️ THE FIX: Completely hide QR and Address if Awaiting Node */}
+                                        {isAddressMissing ? (
+                                            <div className="bg-slate-900/50 p-8 rounded-2xl border border-slate-700 mb-8 text-center flex flex-col items-center gap-4">
+                                                <AlertTriangle size={40} className="text-orange-500 opacity-50" />
+                                                <div>
+                                                    <div className="text-sm font-bold text-white uppercase tracking-widest font-mono mb-2">Network Node Offline</div>
+                                                    <div className="text-xs text-slate-400 font-mono">Please contact support to generate your secure deposit address.</div>
+                                                </div>
                                             </div>
-                                        </div>
+                                        ) : (
+                                            <>
+                                                <div className="text-left text-[10px] font-mono text-slate-500 mb-2 tracking-widest uppercase ml-1">Transmit {feeAssetSymbol} to Secure Node:</div>
+                                                <div onClick={() => copyToClipboard(feeWalletAddress)} className="bg-slate-950 p-4 md:p-5 rounded-xl border border-slate-700/50 mb-6 flex items-center justify-between cursor-pointer hover:border-cyan-500/50 hover:bg-slate-900 transition-all group shadow-inner">
+                                                    <div className="font-mono text-xs md:text-sm text-slate-300 break-all text-left pr-4 group-hover:text-white transition-colors">{feeWalletAddress || "Generating..."}</div>
+                                                    <div className="bg-slate-800 p-2 rounded-lg group-hover:bg-cyan-500/20 transition-colors">
+                                                        <Copy size={16} className="text-slate-400 group-hover:text-cyan-400 transition-colors"/>
+                                                    </div>
+                                                </div>
 
-                                        <div className="relative mb-8">
-                                            <div className="text-left text-[10px] font-mono text-slate-500 mb-2 tracking-widest uppercase ml-1">Transmitted Volume (Optional)</div>
-                                            <input type="number" value={feeSentAmount} onChange={e => setFeeSentAmount(e.target.value)} placeholder={`${feeAmountCrypto.toFixed(5)} ${feeAssetSymbol}`} className="w-full bg-slate-950 border border-slate-700/50 p-4 md:p-5 rounded-xl text-white font-mono text-base outline-none focus:border-cyan-500/70 focus:shadow-[0_0_15px_rgba(6,182,212,0.2)] transition-all shadow-inner placeholder:text-slate-700" />
-                                        </div>
-                                        
-                                        <button onClick={handleDeclareFeeDeposit} disabled={isProcessing} className="w-full py-4 md:py-5 bg-gradient-to-r from-cyan-500 to-cyan-400 hover:from-cyan-400 hover:to-cyan-300 text-slate-900 rounded-xl font-black uppercase tracking-widest text-xs md:text-sm shadow-[0_10px_20px_rgba(6,182,212,0.3)] hover:shadow-[0_15px_25px_rgba(6,182,212,0.4)] transition-all flex justify-center items-center gap-2 transform active:scale-[0.98]">
-                                            {isProcessing ? <RefreshCw size={18} className="animate-spin" /> : "Verify Network Transmission"}
-                                        </button>
+                                                <div className="relative mb-8">
+                                                    <div className="text-left text-[10px] font-mono text-slate-500 mb-2 tracking-widest uppercase ml-1">Transmitted Volume (Optional)</div>
+                                                    <input type="number" value={feeSentAmount} onChange={e => setFeeSentAmount(e.target.value)} placeholder={`${feeAmountCrypto.toFixed(5)} ${feeAssetSymbol}`} className="w-full bg-slate-950 border border-slate-700/50 p-4 md:p-5 rounded-xl text-white font-mono text-base outline-none focus:border-cyan-500/70 focus:shadow-[0_0_15px_rgba(6,182,212,0.2)] transition-all shadow-inner placeholder:text-slate-700" />
+                                                </div>
+                                                
+                                                <button onClick={handleDeclareFeeDeposit} disabled={isProcessing} className="w-full py-4 md:py-5 bg-gradient-to-r from-cyan-500 to-cyan-400 hover:from-cyan-400 hover:to-cyan-300 text-slate-900 rounded-xl font-black uppercase tracking-widest text-xs md:text-sm shadow-[0_10px_20px_rgba(6,182,212,0.3)] hover:shadow-[0_15px_25px_rgba(6,182,212,0.4)] transition-all flex justify-center items-center gap-2 transform active:scale-[0.98]">
+                                                    {isProcessing ? <RefreshCw size={18} className="animate-spin" /> : "Verify Network Transmission"}
+                                                </button>
+                                            </>
+                                        )}
                                     </div>
                                 )}
 

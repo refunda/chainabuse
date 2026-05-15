@@ -150,11 +150,14 @@ const SupportTab = ({ user }: any) => {
         };
     }, [user?.id, view]);
 
+    // 🛡️ THE FIX: Only scroll to bottom if a BRAND NEW message is added
+    const prevMsgCount = useRef(0);
     useEffect(() => {
-        if (view === "chat") {
+        if (view === "chat" && messages.length > prevMsgCount.current) {
             messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+            prevMsgCount.current = messages.length;
         }
-    }, [messages, view]);
+    }, [messages.length, view]);
 
     const handleSubmitTicket = async () => {
         if (!initialMessage.trim()) return;
