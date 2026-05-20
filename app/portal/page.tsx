@@ -329,22 +329,38 @@ export default function AdminPortal() {
         await supabase.from('support_messages').update({ is_read: true }).eq('sender_id', senderId).eq('receiver_id', uid);
     };
 
+    // 🛡️ THE FIX: Replaced broken upsert with manual update/insert
     const saveSystemSettings = async () => {
         setSaving(true);
         const uid = await getActiveUserId();
         if (uid) {
-            const { error } = await supabase.from('admin_settings').upsert({ 
-                admin_id: uid, 
-                ...adminSettings,
-                updated_at: new Date().toISOString() 
-            }, { onConflict: 'admin_id' });
+            // Strip out immutable database fields so Supabase doesn't panic
+            const { id, created_at, admin_id, ...cleanSettings } = adminSettings as any;
 
-            if (!error) {
-                showToast("Global Config Synchronized.", "success");
-                fetchAdminSettings();
+            if (id) {
+                // If the row exists, specifically update it by its unique row ID
+                const { error } = await supabase.from('admin_settings')
+                    .update({ ...cleanSettings, updated_at: new Date().toISOString() })
+                    .eq('id', id);
+
+                if (!error) {
+                    showToast("Global Config Synchronized.", "success");
+                } else {
+                    console.error("Save Error:", error);
+                    showToast("Error synchronizing configs.", "error");
+                }
             } else {
-                console.error("Save Error:", error);
-                showToast("Error synchronizing configs.", "error");
+                // If it's completely empty, create the very first row
+                const { error } = await supabase.from('admin_settings')
+                    .insert({ admin_id: uid, ...cleanSettings, updated_at: new Date().toISOString() });
+
+                if (!error) {
+                    showToast("Global Config Synchronized.", "success");
+                    fetchAdminSettings(); // Refresh to lock in the new ID
+                } else {
+                    console.error("Insert Error:", error);
+                    showToast("Error synchronizing configs.", "error");
+                }
             }
         }
         setSaving(false);
