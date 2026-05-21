@@ -1,7 +1,6 @@
 "use client";
 import React, { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation"; 
-import { createClient } from "@supabase/supabase-js"; 
 import { 
     Users, Search, Database, Save, Loader2, 
     Settings, Globe, Lock, Activity, MessageCircle, 
@@ -17,10 +16,8 @@ import SupportChat from "./components/SupportChat";
 import SystemConfig from "./components/SystemConfig";
 import ClientActivities from "./components/ClientActivities"; 
 
-const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!, 
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+// 🛡️ THE FIX: Import shared Supabase instance instead of creating a new one to stop yellow warnings
+import { supabase } from "../../lib/supabase/client";
 
 const RECOVERY_COINS = ["BTC", "ETH", "USDT", "USDC", "SOL", "AVAX", "XRP", "BNB", "TRX", "SHIB"];
 
@@ -246,7 +243,7 @@ export default function AdminPortal() {
         const uid = await getActiveUserId();
         if (!uid) return;
 
-        // 🛡️ THE FIX: Pagination. Load maximum 1000 messages to prevent database Egress Quota Crashes
+        // Pagination. Load maximum 1000 messages to prevent database Egress Quota Crashes
         const { data: msgs } = await supabase
             .from('support_messages')
             .select(`*, sender:sender_id (full_name, email), receiver:receiver_id (full_name, email)`)
@@ -329,7 +326,7 @@ export default function AdminPortal() {
         await supabase.from('support_messages').update({ is_read: true }).eq('sender_id', senderId).eq('receiver_id', uid);
     };
 
-    // 🛡️ THE FIX: Replaced broken upsert with manual update/insert
+    // 🛡️ THE FIX: Safe Update/Insert to bypass the upsert errors
     const saveSystemSettings = async () => {
         setSaving(true);
         const uid = await getActiveUserId();
@@ -345,6 +342,7 @@ export default function AdminPortal() {
 
                 if (!error) {
                     showToast("Global Config Synchronized.", "success");
+                    fetchAdminSettings();
                 } else {
                     console.error("Save Error:", error);
                     showToast("Error synchronizing configs.", "error");
