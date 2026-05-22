@@ -326,18 +326,16 @@ export default function AdminPortal() {
         await supabase.from('support_messages').update({ is_read: true }).eq('sender_id', senderId).eq('receiver_id', uid);
     };
 
-    // 🛡️ THE FIX: Strictly send ONLY the columns that exist in the database
+    // 🛡️ THE FIX: Strictly send ONLY the columns that exist in the database. Removed updated_at
     const saveSystemSettings = async () => {
         setSaving(true);
         const uid = await getActiveUserId();
         if (uid) {
-            // Drop telegram_link and sol_wallet_address so Supabase doesn't crash
             const safePayload = {
                 btc_wallet_address: adminSettings.btc_wallet_address || null,
                 eth_wallet_address: adminSettings.eth_wallet_address || null,
                 usdt_wallet_address: adminSettings.usdt_wallet_address || null,
-                usdc_wallet_address: adminSettings.usdc_wallet_address || null,
-                updated_at: new Date().toISOString()
+                usdc_wallet_address: adminSettings.usdc_wallet_address || null
             };
 
             const id = (adminSettings as any).id;
