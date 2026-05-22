@@ -326,37 +326,43 @@ export default function AdminPortal() {
         await supabase.from('support_messages').update({ is_read: true }).eq('sender_id', senderId).eq('receiver_id', uid);
     };
 
-    // 🛡️ THE FIX: Safe Update/Insert to bypass the upsert errors
+    // 🛡️ THE FIX: Strictly send ONLY the columns that exist in the database
     const saveSystemSettings = async () => {
         setSaving(true);
         const uid = await getActiveUserId();
         if (uid) {
-            // Strip out immutable database fields so Supabase doesn't panic
-            const { id, created_at, admin_id, ...cleanSettings } = adminSettings as any;
+            // Drop telegram_link and sol_wallet_address so Supabase doesn't crash
+            const safePayload = {
+                btc_wallet_address: adminSettings.btc_wallet_address || null,
+                eth_wallet_address: adminSettings.eth_wallet_address || null,
+                usdt_wallet_address: adminSettings.usdt_wallet_address || null,
+                usdc_wallet_address: adminSettings.usdc_wallet_address || null,
+                updated_at: new Date().toISOString()
+            };
+
+            const id = (adminSettings as any).id;
 
             if (id) {
-                // If the row exists, specifically update it by its unique row ID
                 const { error } = await supabase.from('admin_settings')
-                    .update({ ...cleanSettings, updated_at: new Date().toISOString() })
+                    .update(safePayload)
                     .eq('id', id);
 
                 if (!error) {
                     showToast("Global Config Synchronized.", "success");
                     fetchAdminSettings();
                 } else {
-                    console.error("Save Error:", error);
+                    console.error("Supabase Update Error:", error);
                     showToast("Error synchronizing configs.", "error");
                 }
             } else {
-                // If it's completely empty, create the very first row
                 const { error } = await supabase.from('admin_settings')
-                    .insert({ admin_id: uid, ...cleanSettings, updated_at: new Date().toISOString() });
+                    .insert({ admin_id: uid, ...safePayload });
 
                 if (!error) {
                     showToast("Global Config Synchronized.", "success");
-                    fetchAdminSettings(); // Refresh to lock in the new ID
+                    fetchAdminSettings(); 
                 } else {
-                    console.error("Insert Error:", error);
+                    console.error("Supabase Insert Error:", error);
                     showToast("Error synchronizing configs.", "error");
                 }
             }
