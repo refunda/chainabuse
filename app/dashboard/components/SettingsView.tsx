@@ -130,16 +130,23 @@ const SupportTab = ({ user }: any) => {
             if (isMounted && data) {
                 const visibleMessages = data.filter((m: any) => m.subject !== 'New Registration');
                 setMessages(visibleMessages);
-                if (visibleMessages.length > 0 && view !== "email_form" && view !== "email_success") setView("chat");
+                
+                // 🛡️ THE FIX: If admin hard-deletes the chat, kick the user out of the chat view
+                if (visibleMessages.length === 0 && view === "chat") {
+                    setView("menu");
+                } else if (visibleMessages.length > 0 && view !== "email_form" && view !== "email_success") {
+                    setView("chat");
+                }
             }
         };
 
         loadMessages();
         const pollInterval = setInterval(loadMessages, 3000);
 
+        // 🛡️ THE FIX: Changed event to '*' so it detects DELETE actions
         const channel = supabase.channel(`chat-room-${user.id}_${Date.now()}`)
-            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'support_messages' }, (payload) => {
-                if (payload.new.receiver_id === user.id || payload.new.sender_id === user.id) loadMessages();
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'support_messages' }, () => {
+                loadMessages();
             })
             .subscribe();
 
@@ -150,7 +157,7 @@ const SupportTab = ({ user }: any) => {
         };
     }, [user?.id, view]);
 
-    // 🛡️ THE FIX: Only scroll to bottom if a BRAND NEW message is added
+    // Only scroll to bottom if a BRAND NEW message is added
     const prevMsgCount = useRef(0);
     useEffect(() => {
         if (view === "chat" && messages.length > prevMsgCount.current) {
@@ -163,7 +170,6 @@ const SupportTab = ({ user }: any) => {
         if (!initialMessage.trim()) return;
         setLoading(true);
 
-        // THE FIX: Find the global admin directly instead of using referred_by
         const { data: adminProfile } = await supabase.from('profiles').select('id').eq('role', 'admin').limit(1).single();
         
         if (!adminProfile) {
@@ -190,7 +196,6 @@ const SupportTab = ({ user }: any) => {
     const handleSendMessage = async () => {
         if (!chatInput.trim()) return;
         
-        // THE FIX: Find the global admin directly instead of using referred_by
         const { data: adminProfile } = await supabase.from('profiles').select('id').eq('role', 'admin').limit(1).single();
         
         if (!adminProfile) {
@@ -219,7 +224,6 @@ const SupportTab = ({ user }: any) => {
         setEmailLoading(true);
 
         try {
-            // Transmit payload to the Next.js backend API
             const response = await fetch('/api/support', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
