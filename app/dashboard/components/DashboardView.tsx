@@ -301,19 +301,32 @@ export default function DashboardView({ setActiveTab, user }: any) {
             setIsVerified(profile.kyc_status === 'verified');
             if (profile.preferred_currency) setPreferredCurrency(profile.preferred_currency);
             
+            // STRICT OVERWRITE: Prevent ghost appending.
+            // 🛡️ THE FIX (dashboard total was LOWER than the Assets page): only BTC/ETH/USDT/USDC
+            // exist as real columns on `profiles`. Every other coin (SOL, XRP, ADA, ...) lives inside
+            // the `other_balances` JSON. The old loop read `${sym}_balance` for EVERY coin, so those
+            // non-core balances were always 0 and silently dropped from the dashboard total. Now we
+            // read core coins from their columns and everything else from other_balances — EXACTLY
+            // like AssetsManager does — so the "TOTAL ASSETS SECURED" figure matches the Assets page.
             const bals: Record<string, number> = {};
+            const otherVault = profile.other_balances || {};
             ASSET_LIST.forEach(asset => {
-                const col = `${asset.s.toLowerCase()}_balance`;
-                bals[asset.s] = Number(profile[col]) || 0; 
+                const sym = asset.s.toUpperCase();
+                if (['BTC', 'ETH', 'USDT', 'USDC'].includes(sym)) {
+                    bals[sym] = Number(profile[`${sym.toLowerCase()}_balance`]) || 0;
+                } else {
+                    bals[sym] = Number(otherVault[sym]) || 0;
+                }
             });
-            setProfileBalances(bals);
+            setProfileBalances(() => bals);
             setSyncState(prev => ({ ...prev, balancesReady: true })); // Unlock Supabase
         }
 
         const { data } = await supabase.from('recovery_allocations').select('*').eq('user_id', user.id);
         if (data) {
             const validAssets = data.filter((item: any) => parseFloat(item.amount) > 0);
-            setRecoverableAssets(validAssets);
+            // STRICT OVERWRITE: Prevent ghost appending
+            setRecoverableAssets(() => validAssets);
         }
     };
 
@@ -336,43 +349,108 @@ export default function DashboardView({ setActiveTab, user }: any) {
     }, []);
 
     // --- 3. BINANCE WEBSOCKET (LOCK 3: CRYPTO PRICES) ---
+    // Uses the SAME stream as the navbar ticker — !miniTicker@arr — which streams ALL symbols in one
+    // frame; we then filter to the coins we track.
+    //
+    // 🛡️ DEV-CONSOLE WEBSOCKET WARNING FIX + auto-reconnect:
+    // The old cleanup did `ws.onopen = () => ws.close()` for a still-CONNECTING socket. Under React
+    // StrictMode the effect mounts → unmounts → mounts in dev, so the throwaway first socket was told
+    // to close only AFTER fully opening — and Binance starts blasting the array stream (and a
+    // connection-level ping) the instant it opens, so a ping landed during the close and Chrome
+    // logged a WebSocket warning ("Ping received after close", and after the first fix "closed
+    // before the connection is established"). The clean fix: DEFER opening the socket by a tick via
+    // setTimeout(connect, 0). React runs the throwaway mount's setup+cleanup synchronously, so its
+    // cleanup clears that timer before connect() ever runs — no throwaway socket is created, so the
+    // dev console stays clean. We also auto-reconnect on an unexpected drop so prices never freeze if
+    // Binance times out an idle connection or the machine sleeps/wakes. (Production has no StrictMode
+    // double-mount, so none of this dev-only behaviour is even exercised there.)
     useEffect(() => {
-        const streams = ASSET_LIST.map(a => `${a.s.toLowerCase()}usdt@miniTicker`).join('/');
-        const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${streams}`);
-        
-        ws.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            if (data.s.endsWith("USDT")) {
-                const shortName = data.s.replace("USDT", "");
-                setMarketPrices(prev => ({ ...prev, [shortName]: parseFloat(data.c) }));
-                setSyncState(prev => ({ ...prev, cryptoReady: true })); // Unlock Crypto
-            }
+        const wanted = new Set(ASSET_LIST.map(a => a.s.toUpperCase()));
+        let ws: WebSocket | null = null;
+        let reconnectTimer: any = null;
+        let isActive = true; // flips false on unmount; guards reconnect + suppresses teardown noise
+
+        const connect = () => {
+            if (!isActive) return;
+            ws = new WebSocket("wss://stream.binance.com:9443/ws/!miniTicker@arr");
+
+            ws.onmessage = (event) => {
+                if (!isActive) return;
+                let data: any;
+                try { data = JSON.parse(event.data); } catch { return; }
+                if (!Array.isArray(data)) return; // guard against non-array control frames
+                const updates: Record<string, number> = {};
+                data.forEach((d: any) => {
+                    const symbol = d.s;
+                    if (symbol && symbol.endsWith("USDT")) {
+                        const shortName = symbol.replace("USDT", "");
+                        if (wanted.has(shortName)) updates[shortName] = parseFloat(d.c);
+                    }
+                });
+                if (Object.keys(updates).length > 0) {
+                    setMarketPrices(prev => ({ ...prev, ...updates }));
+                    setSyncState(prev => ({ ...prev, cryptoReady: true })); // Unlock Crypto
+                }
+            };
+
+            // Let a transport error fall through to onclose, which handles the reconnect.
+            ws.onerror = () => { try { ws?.close(); } catch {} };
+
+            ws.onclose = () => {
+                if (!isActive) return; // unmounting on purpose — do NOT reconnect
+                reconnectTimer = setTimeout(connect, 3000); // genuine drop — resume prices
+            };
         };
+
+        // Defer the very first connection by a tick. React runs StrictMode's throwaway
+        // mount setup+cleanup synchronously, so its cleanup clears this timer before connect()
+        // ever runs — meaning NO socket is created on the throwaway pass. That is what fully
+        // silences the dev-only console warning. The real mount's timer survives and opens one socket.
+        const openTimer = setTimeout(connect, 0);
 
         // Absolute Safety Fallback: Force unlock everything after 2.5 seconds max
         const fallbackLock = setTimeout(() => {
             setSyncState({ balancesReady: true, cryptoReady: true, fiatReady: true });
         }, 2500);
 
-        return () => { 
+        return () => {
+            isActive = false;
+            clearTimeout(openTimer);
             clearTimeout(fallbackLock);
-            if (ws.readyState === 1) ws.close();
-            else if (ws.readyState === 0) ws.onopen = () => ws.close();
+            clearTimeout(reconnectTimer);
+            if (ws) {
+                // Detach handlers BEFORE closing so the teardown close can't trigger a reconnect,
+                // and abort even a still-CONNECTING socket (this is what stops the ping-after-close log).
+                ws.onopen = null;
+                ws.onmessage = null;
+                ws.onerror = null;
+                ws.onclose = null;
+                try { ws.close(); } catch {}
+            }
         };
     }, []);
 
     // --- 4. SUPABASE REALTIME ---
+    // The robust pattern: build the channel SYNCHRONOUSLY with a STABLE name, attach every .on()
+    // BEFORE subscribe(), capture the real reference for cleanup, and only remove THIS channel
+    // (never removeAllChannels(), which would also kill other components' realtime). isClaimed is
+    // not a dependency — the channel doesn't need to rebuild when claim status changes.
     useEffect(() => {
-        fetchData();
         if (!user) return;
 
-        const channel = supabase.channel(`dashboard_updates_${user.id}_${Date.now()}`)
+        fetchData();
+
+        const channel = supabase.channel(`dashboard_updates_${user.id}`);
+
+        channel
             .on('postgres_changes', { event: '*', schema: 'public', table: 'recovery_allocations', filter: `user_id=eq.${user.id}` }, () => fetchData())
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${user.id}` }, () => fetchData())
             .subscribe();
-            
-        return () => { supabase.removeChannel(channel); };
-    }, [user, isClaimed]);
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [user]);
 
     const handleCurrencyChange = async (newCurrency: string) => {
         setPreferredCurrency(newCurrency);

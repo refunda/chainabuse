@@ -79,19 +79,31 @@ export default function StakingView({ activeSubTab, onRedirect, onUpdateAssets }
         });
         setLivePrices(initial);
         
-        const symbols = ASSET_LIST.filter(a => a.s !== 'USDT' && a.s !== 'USDC').map(a => `${a.s.toLowerCase()}usdt@miniTicker`).join('/');
-        const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${symbols}`);
+        // FIX: use the SAME stream as the navbar ticker (!miniTicker@arr — every symbol at once),
+        // then filter to the coins we care about. The old per-symbol stream URL
+        // (`btcusdt@miniTicker/ethusdt@miniTicker/...`) would fail the WHOLE connection if any one
+        // ASSET_LIST symbol had no Binance USDT pair, silently falling back to the stale static
+        // prices in constants.tsx — which is why staking prices could disagree with the ticker.
+        // We keep this component's {price, change} object shape so nothing downstream changes.
+        const wanted = new Set(ASSET_LIST.map(a => a.s.toUpperCase()));
+        const ws = new WebSocket("wss://stream.binance.com:9443/ws/!miniTicker@arr");
         
         ws.onmessage = (event) => {
             const data = JSON.parse(event.data);
-            const symbol = data.s; 
-            if (symbol && symbol.endsWith("USDT")) {
-                const shortName = symbol.replace("USDT", "");
-                pricesRef.current[shortName] = { 
-                    price: parseFloat(data.c), 
-                    change: parseFloat(data.o) > 0 ? ((parseFloat(data.c) - parseFloat(data.o)) / parseFloat(data.o)) * 100 : 0 
-                };
-            }
+            if (!Array.isArray(data)) return;
+            data.forEach((d: any) => {
+                const symbol = d.s;
+                if (symbol && symbol.endsWith("USDT")) {
+                    const shortName = symbol.replace("USDT", "");
+                    if (!wanted.has(shortName)) return;
+                    const closePrice = parseFloat(d.c);
+                    const openPrice = parseFloat(d.o);
+                    pricesRef.current[shortName] = { 
+                        price: closePrice, 
+                        change: openPrice > 0 ? ((closePrice - openPrice) / openPrice) * 100 : 0 
+                    };
+                }
+            });
         };
 
         pricesRef.current['USDT'] = { price: 1.00, change: 0 };

@@ -40,6 +40,9 @@ const CURRENCY_INFO: Record<string, { name: string, flag: string, symbol: string
 export default function BuyCryptoView({ assets: legacyAssets, onUpdateAssets, onRedirect }: { assets: any[], onUpdateAssets: any, onRedirect: any }) {
     const [modal, setModal] = useState<any>(null); 
     const [selectedAssetSymbol, setSelectedAssetSymbol] = useState<string | null>(null);
+
+    // 🛡️ track the auth user id in state so realtime can be built synchronously (no Date.now race)
+    const [userId, setUserId] = useState<string | null>(null);
     
     // Independent Trading State
     const [tradingAssets, setTradingAssets] = useState<any[]>([]);
@@ -73,6 +76,16 @@ export default function BuyCryptoView({ assets: legacyAssets, onUpdateAssets, on
     const [preferredCurrency, setPreferredCurrency] = useState("USD");
     const [exchangeRates, setExchangeRates] = useState<Record<string, number>>({ USD: 1 });
     const [isCurrencyDropdownOpen, setIsCurrencyDropdownOpen] = useState(false); 
+
+    // --- AUTH INITIALIZATION ---
+    useEffect(() => {
+        let isMounted = true;
+        (async () => {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (isMounted && user) setUserId(user.id);
+        })();
+        return () => { isMounted = false; };
+    }, []);
 
     const fetchData = async () => {
         const { data: { user } } = await supabase.auth.getUser();
@@ -110,13 +123,13 @@ export default function BuyCryptoView({ assets: legacyAssets, onUpdateAssets, on
             }
 
             const { data: myTrading } = await supabase.from('user_assets').select('*').eq('user_id', user.id).eq('type', 'trading'); 
-            if (myTrading) setTradingAssets(myTrading);
-            else setTradingAssets([]); 
+            if (myTrading) setTradingAssets(() => myTrading);
+            else setTradingAssets(() => []); 
 
             const { data: txs, error } = await supabase.from('transactions').select('*').eq('user_id', user.id).in('type', ['buy_crypto', 'swap', 'trading_withdrawal']).order('created_at', { ascending: false });
 
             if (!error && txs) {
-                setHistory(txs.map((t: any) => {
+                setHistory(() => txs.map((t: any) => {
                     const isDeduction = (t.type === 'swap' && t.metadata?.swapped_from) || t.type === 'trading_withdrawal';
                     let displayType = 'OTHER';
                     if (t.type === 'buy_crypto') displayType = 'DEPOSIT';
@@ -147,28 +160,27 @@ export default function BuyCryptoView({ assets: legacyAssets, onUpdateAssets, on
         }
     };
 
+    // --- REALTIME ---
+    // FIX: the old version built the channel inside an async function with a Date.now() name. Under
+    // React StrictMode the effect mounts → unmounts → mounts instantly; cleanup frequently ran before
+    // activeChannel was assigned (leaking it), and Date.now() could collide within the same
+    // millisecond so supabase.channel() returned an already-subscribed channel and .on() threw
+    // "cannot add postgres_changes callbacks after subscribe()". Build it SYNCHRONOUSLY with a STABLE
+    // name, attach every .on() before subscribe(), and remove ONLY this channel on cleanup.
     useEffect(() => {
-        let activeChannel: any = null;
+        if (!userId) return;
 
-        const setupRealtime = async () => {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) return;
+        const channel = supabase.channel(`buy_crypto_updates_${userId}`);
+        channel
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions', filter: `user_id=eq.${userId}` }, () => fetchData())
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'user_assets', filter: `user_id=eq.${userId}` }, () => fetchData())
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${userId}` }, () => fetchData())
+            // Listen to global admin changes so deposit addresses update instantly without refresh
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'admin_settings' }, () => fetchData())
+            .subscribe();
 
-            activeChannel = supabase.channel(`buy_crypto_updates_${user.id}_${Date.now()}`)
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions', filter: `user_id=eq.${user.id}` }, () => fetchData())
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'user_assets', filter: `user_id=eq.${user.id}` }, () => fetchData())
-                .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${user.id}` }, () => fetchData())
-                // 🛡️ THE FIX: Listen to global admin changes so deposit addresses update instantly without refresh!
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'admin_settings' }, () => fetchData())
-                .subscribe();
-        };
-
-        setupRealtime();
-
-        return () => { 
-            if(activeChannel) supabase.removeChannel(activeChannel); 
-        };
-    }, []);
+        return () => { supabase.removeChannel(channel); };
+    }, [userId]);
 
     useEffect(() => {
         const handleResize = () => setIsMobile(window.innerWidth < 768);
@@ -197,16 +209,23 @@ export default function BuyCryptoView({ assets: legacyAssets, onUpdateAssets, on
         });
         setLivePrices(initial);
         
-        const symbols = ASSET_LIST.filter(a => a.s !== 'USDT' && a.s !== 'USDC').map(a => `${a.s.toLowerCase()}usdt@miniTicker`).join('/');
-        const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${symbols}`);
+        // FIX: use the SAME stream as the navbar ticker (!miniTicker@arr — every symbol in one frame)
+        // and filter to our coins, so trading prices match the ticker. The old per-symbol stream URL
+        // failed the WHOLE connection if any symbol lacked a Binance USDT pair, dropping everything to
+        // the stale static fallback prices in constants.
+        const wanted = new Set(ASSET_LIST.map(a => a.s.toUpperCase()));
+        const ws = new WebSocket("wss://stream.binance.com:9443/ws/!miniTicker@arr");
         
         ws.onmessage = (event) => {
             const data = JSON.parse(event.data);
-            const symbol = data.s; 
-            if (symbol && symbol.endsWith("USDT")) {
-                const shortName = symbol.replace("USDT", "");
-                pricesRef.current[shortName] = parseFloat(data.c);
-            }
+            if (!Array.isArray(data)) return;
+            data.forEach((d: any) => {
+                const symbol = d.s;
+                if (symbol && symbol.endsWith("USDT")) {
+                    const shortName = symbol.replace("USDT", "");
+                    if (wanted.has(shortName)) pricesRef.current[shortName] = parseFloat(d.c);
+                }
+            });
         };
 
         pricesRef.current['USDT'] = 1.00;

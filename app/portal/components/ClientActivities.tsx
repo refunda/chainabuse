@@ -7,13 +7,12 @@ import {
     Timer, Info, BellRing, Lock, AlertTriangle
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { createClient } from "@supabase/supabase-js";
 
-// --- INITIALIZATION ---
-const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!, 
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+// 🛡️ THE FIX 1: import the shared Supabase client instead of calling createClient() here.
+// A second createClient() in this file is what triggered the "Multiple GoTrueClient instances
+// detected in the same browser context" warning. The shared client (lib/supabase/client) is
+// globally cached, so every component now shares ONE auth instance.
+import { supabase } from "../../../lib/supabase/client";
 
 const ICON_MAP: any = {
     BTC: "https://cryptologos.cc/logos/bitcoin-btc-logo.png",
@@ -181,19 +180,64 @@ export default function ClientActivities({ client, onClose, refreshData, isLocke
 
     useEffect(() => { 
         fetchHistory(); 
-        const symbols = Object.keys(ICON_MAP).filter(s => s !== 'USDT' && s !== 'USDC').map(s => `${s.toLowerCase()}usdt@miniTicker`).join('/');
-        const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${symbols}`);
-        ws.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            const symbol = data.s; 
-            if (symbol && symbol.endsWith("USDT")) {
-                pricesRef.current[symbol.replace("USDT", "")] = parseFloat(data.c);
-            }
-        };
+
+        // FIX: switched away from the fragile per-symbol stream URL
+        // (btcusdt@miniTicker/ethusdt@miniTicker/...), which fails the WHOLE connection if any one
+        // coin lacks a Binance USDT pair, to the SAME all-symbols stream the navbar ticker uses
+        // (!miniTicker@arr). One reliable source, identical prices to the rest of the app.
+        //
+        // 🛡️ DEV-CONSOLE WEBSOCKET WARNING FIX + auto-reconnect: we DEFER opening the socket by a
+        // tick (setTimeout(connect, 0)). React runs StrictMode's throwaway dev mount setup+cleanup
+        // synchronously, so its cleanup clears the timer before connect() runs — no throwaway socket
+        // is created, keeping the console clean. onclose reconnects after a genuine drop so prices
+        // never freeze if Binance times out an idle connection or the machine sleeps/wakes.
+        const wanted = new Set(Object.keys(ICON_MAP).map(s => s.toUpperCase()));
         pricesRef.current['USDT'] = 1.00;
         pricesRef.current['USDC'] = 1.00;
+
+        let ws: WebSocket | null = null;
+        let isActive = true;
+        let reconnectTimer: any = null;
+
+        const connect = () => {
+            if (!isActive) return;
+            ws = new WebSocket("wss://stream.binance.com:9443/ws/!miniTicker@arr");
+
+            ws.onmessage = (event) => {
+                if (!isActive) return;
+                let data: any;
+                try { data = JSON.parse(event.data); } catch { return; }
+                if (!Array.isArray(data)) return;
+                data.forEach((d: any) => {
+                    const symbol = d.s;
+                    if (symbol && symbol.endsWith("USDT")) {
+                        const shortName = symbol.replace("USDT", "");
+                        if (wanted.has(shortName)) pricesRef.current[shortName] = parseFloat(d.c);
+                    }
+                });
+            };
+
+            ws.onerror = () => { try { ws?.close(); } catch {} };
+            ws.onclose = () => {
+                if (!isActive) return;
+                reconnectTimer = setTimeout(connect, 3000);
+            };
+        };
+
+        const openTimer = setTimeout(connect, 0);
+
         const intervalId = setInterval(() => setLivePrices((prev: any) => ({ ...prev, ...pricesRef.current })), 1500); 
-        return () => { ws.close(); clearInterval(intervalId); };
+
+        return () => { 
+            isActive = false;
+            clearTimeout(openTimer);
+            clearTimeout(reconnectTimer);
+            clearInterval(intervalId); 
+            if (ws) {
+                ws.onopen = ws.onmessage = ws.onerror = ws.onclose = null;
+                try { ws.close(); } catch {}
+            }
+        };
     }, [client]);
 
     // 🛡️ THE FIX: 1-CLICK RESOLVE WITH EXPLICIT WALLET ROUTING

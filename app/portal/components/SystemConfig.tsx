@@ -1,12 +1,11 @@
 "use client";
 import React, { useState } from "react";
 import { Globe, Save, Loader2, Info, Lock, AlertCircle, KeyRound, ShieldAlert } from "lucide-react";
-import { createClient } from "@supabase/supabase-js";
 
-const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!, 
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+// 🛡️ FIX: use the SHARED Supabase instance instead of creating a second client here.
+// A second createClient() triggers the "Multiple GoTrueClient instances" warning and can
+// desync auth/realtime. Adjust this path if your folder structure differs.
+import { supabase } from "../../../lib/supabase/client";
 
 export default function SystemConfig({ adminSettings, setAdminSettings, saveSystemSettings, saving, isLocked, showToast }: any) {
     // --- Security Update State ---
@@ -45,7 +44,7 @@ export default function SystemConfig({ adminSettings, setAdminSettings, saveSyst
             if (newEmail) updates.email = newEmail;
             if (newPassword) updates.password = newPassword;
 
-            const { data, error } = await supabase.auth.updateUser(updates);
+            const { error } = await supabase.auth.updateUser(updates);
 
             if (error) throw error;
 
@@ -175,6 +174,27 @@ export default function SystemConfig({ adminSettings, setAdminSettings, saveSyst
                                     placeholder="Enter your USDC wallet address..." 
                                     disabled={isLocked}
                                     className="w-full bg-black border border-white/10 h-12 px-3 md:px-4 rounded-xl text-white font-mono text-xs md:text-sm focus:border-teal-500 outline-none transition disabled:opacity-50"
+                                />
+                            </div>
+                        </div>
+
+                        {/* SOL INPUT — added because you have a sol_wallet_address column.
+                            NOTE: your client deposit page (AssetsManager) currently only offers
+                            BTC/ETH/USDT/USDC, so clients won't see a SOL deposit option until that
+                            page is wired for SOL too. Remove this block if you don't want it. */}
+                        <div>
+                            <label className="text-[10px] md:text-[11px] font-bold text-purple-400 mb-2 block uppercase tracking-wide">SOLANA (SOL) ADDRESS</label>
+                            <div className="flex items-center gap-2 md:gap-3">
+                                <div className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center shrink-0 border border-white/5">
+                                    <img src="https://assets.coingecko.com/coins/images/4128/standard/solana.png" alt="SOL" width={20} className="md:w-6 md:h-6"/>
+                                </div>
+                                <input 
+                                    type="text" 
+                                    value={safeSettings.sol_wallet_address || ''} 
+                                    onChange={e => setAdminSettings({...safeSettings, sol_wallet_address: e.target.value})} 
+                                    placeholder="Enter your SOL wallet address..." 
+                                    disabled={isLocked}
+                                    className="w-full bg-black border border-white/10 h-12 px-3 md:px-4 rounded-xl text-white font-mono text-xs md:text-sm focus:border-purple-500 outline-none transition disabled:opacity-50"
                                 />
                             </div>
                         </div>

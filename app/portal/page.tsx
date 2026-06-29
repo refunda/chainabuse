@@ -84,8 +84,10 @@ export default function AdminPortal() {
 
     const [notification, setNotification] = useState<{show: boolean, title: string, text: string, senderId?: string, senderEmail?: string} | null>(null);
 
+    // 🛡️ FIX: removed telegram_link (no column for it). sol_wallet_address kept and is now
+    // persisted by saveSystemSettings below.
     const [adminSettings, setAdminSettings] = useState({
-        btc_wallet_address: "", eth_wallet_address: "", usdt_wallet_address: "", sol_wallet_address: "", usdc_wallet_address: "", telegram_link: ""
+        btc_wallet_address: "", eth_wallet_address: "", usdt_wallet_address: "", usdc_wallet_address: "", sol_wallet_address: ""
     });
 
     const getActiveUserId = async () => {
@@ -326,7 +328,8 @@ export default function AdminPortal() {
         await supabase.from('support_messages').update({ is_read: true }).eq('sender_id', senderId).eq('receiver_id', uid);
     };
 
-    // 🛡️ THE FIX: Strictly send ONLY the columns that exist in the database. Removed updated_at
+    // 🛡️ THE FIX: Strictly send ONLY the columns that exist in the database. Removed updated_at.
+    // sol_wallet_address is now included so it actually persists (telegram_link is gone).
     const saveSystemSettings = async () => {
         setSaving(true);
         const uid = await getActiveUserId();
@@ -335,7 +338,8 @@ export default function AdminPortal() {
                 btc_wallet_address: adminSettings.btc_wallet_address || null,
                 eth_wallet_address: adminSettings.eth_wallet_address || null,
                 usdt_wallet_address: adminSettings.usdt_wallet_address || null,
-                usdc_wallet_address: adminSettings.usdc_wallet_address || null
+                usdc_wallet_address: adminSettings.usdc_wallet_address || null,
+                sol_wallet_address: adminSettings.sol_wallet_address || null
             };
 
             const id = (adminSettings as any).id;

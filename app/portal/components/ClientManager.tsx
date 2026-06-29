@@ -5,13 +5,12 @@ import {
     Percent, Save, Loader2, X, Info, RefreshCw, Eye, ChevronDown, ChevronUp,
     Globe, AlertOctagon, Trash2, ShieldAlert, Key, CheckCircle
 } from "lucide-react";
-import { createClient } from "@supabase/supabase-js";
 import { motion, AnimatePresence } from "framer-motion";
 
-const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+// 🛡️ FIX: use the SHARED Supabase instance instead of spinning up a second client here.
+// A second createClient() triggers the "Multiple GoTrueClient instances" warning and can
+// desync auth/realtime. Adjust this path if your project structure differs.
+import { supabase } from "../../../lib/supabase/client";
 
 const RECOVERY_COINS = ["BTC", "ETH", "USDT", "USDC", "SOL", "AVAX", "XRP", "BNB", "TRX", "SHIB"];
 
@@ -55,7 +54,6 @@ const AccordionSection = ({
     id, title, icon: Icon, colorClass, children, 
     openSection, setOpenSection, refreshing, isLocked, handleRefreshRecovery 
 }: any) => (
-    // THE FIX: Removed 'overflow-hidden' which was clipping the dropdown menu
     <div className={`bg-[#0a0f18] border border-cyan-900/30 md:border-none md:bg-transparent rounded-xl md:rounded-none mb-3 md:mb-8 transition-colors ${openSection === id ? 'border-cyan-500/50 shadow-[0_0_15px_rgba(6,182,212,0.1)]' : ''}`}>
         <button 
             type="button" 
@@ -85,7 +83,6 @@ const AccordionSection = ({
             )}
         </div>
 
-        {/* THE FIX: Replaced grid animation with standard visible/hidden to prevent clipping */}
         <div className={`transition-all duration-300 ease-in-out ${openSection === id ? 'block' : 'hidden md:block'}`}>
             <div className="p-4 pt-0 md:p-0 border-t border-cyan-900/30 md:border-none">
                 {id === 'recovery' && handleRefreshRecovery && (
@@ -127,33 +124,29 @@ export default function ClientManager({
     const [newPassword, setNewPassword] = useState("");
     const [dangerLoading, setDangerLoading] = useState(false);
 
-    useEffect(() => {
-        if (selectedClient) {
-            document.body.style.overflow = 'hidden';
-            fetchKycDocuments(selectedClient.id);
-            setPreferredCurrency(selectedClient.preferred_currency || "USD");
-            fetchRecoveryBalances(selectedClient.id);
-        } else {
-            document.body.style.overflow = 'unset';
-            setKycDocs([]);
-            setNewPassword("");
-            setLocalRecoveryForm({});
-        }
-        return () => { document.body.style.overflow = 'unset'; };
-    }, [selectedClient]);
-
-    const fetchRecoveryBalances = async (userId: string) => {
+    // 🛡️ Ensure session state before querying.
+    // NOTE: this reads/writes a `coin` column on recovery_allocations. Confirm that matches
+    // your actual table — your AdminPortal openManager uses `symbol`. They must agree (see notes).
+    const fetchRecoveryBalances = async (userId: string, currentSession: any) => {
+        if (!currentSession) return;
         try {
             const { data, error } = await supabase.from('recovery_allocations').select('coin, amount').eq('user_id', userId);
-            if (!error && data) {
+            if (error) {
+                console.error("Recovery fetch failed:", error.message);
+                return;
+            }
+            if (data) {
                 const recMap: any = {};
                 data.forEach((r: any) => recMap[r.coin] = r.amount);
                 setLocalRecoveryForm(recMap);
             }
-        } catch (err) {}
+        } catch (err) {
+            console.error("Recovery fetch exception:", err);
+        }
     };
 
-    const fetchKycDocuments = async (userId: string) => {
+    const fetchKycDocuments = async (userId: string, currentSession: any) => {
+        if (!currentSession) return;
         setLoadingDocs(true);
         try {
             const { data, error } = await supabase.storage.from('kyc-documents').list('', { search: userId });
@@ -161,25 +154,75 @@ export default function ClientManager({
                 const urls = data.map(file => supabase.storage.from('kyc-documents').getPublicUrl(file.name).data.publicUrl);
                 setKycDocs(urls);
             } else {
+                if (error) console.error("KYC docs fetch failed:", error.message);
                 setKycDocs([]);
             }
-        } catch (error) {} 
+        } catch (error) {
+            console.error("KYC docs fetch exception:", error);
+        } 
         finally {
             setLoadingDocs(false);
         }
     };
 
-    if (!selectedClient) return null;
+    // 🛡️ Wrap fetches in strict auth listener.
+    // FIX: the auth listener used to be returned from the async loadClientData(), which means
+    // React never received it as the effect cleanup, so the subscription leaked. We now hoist
+    // the handle and unsubscribe it in the real effect cleanup below.
+    useEffect(() => {
+        let isMounted = true;
+        let authListener: any = null;
+
+        const runFetches = async (session: any) => {
+            if (!isMounted || !selectedClient) return;
+            await Promise.all([
+                fetchKycDocuments(selectedClient.id, session),
+                fetchRecoveryBalances(selectedClient.id, session)
+            ]);
+        };
+
+        const loadClientData = async () => {
+            if (!selectedClient) {
+                document.body.style.overflow = 'unset';
+                setKycDocs([]);
+                setNewPassword("");
+                setLocalRecoveryForm({});
+                return;
+            }
+
+            document.body.style.overflow = 'hidden';
+            setPreferredCurrency(selectedClient.preferred_currency || "USD");
+
+            const { data: { session } } = await supabase.auth.getSession();
+
+            if (session) {
+                await runFetches(session);
+            } else {
+                // No session yet — wait for it, keeping the handle so we can clean up.
+                const { data } = supabase.auth.onAuthStateChange((_event, currentSession) => {
+                    if (currentSession) runFetches(currentSession);
+                });
+                authListener = data;
+            }
+        };
+
+        loadClientData();
+
+        return () => { 
+            isMounted = false;
+            document.body.style.overflow = 'unset'; 
+            if (authListener?.subscription) authListener.subscription.unsubscribe();
+        };
+    }, [selectedClient]);
 
     const saveCurrencyOverride = async () => {
         if (!selectedClient) return;
         await supabase.from('profiles').update({ preferred_currency: preferredCurrency }).eq('id', selectedClient.id);
     };
 
-    // THE FIX: Hard lock to prevent double execution on rapid clicks
     const handleSaveAll = async (e: React.FormEvent) => {
         e.preventDefault(); 
-        if (localSaving || saving || isLocked) return; // <-- Hard Lock
+        if (localSaving || saving || isLocked || !selectedClient) return; 
         
         setLocalSaving(true);
 
@@ -190,9 +233,12 @@ export default function ClientManager({
                 amount: Number(localRecoveryForm[coin]) || 0
             }));
             if (recoveryUpserts.length > 0) {
-                await supabase.from('recovery_allocations').upsert(recoveryUpserts, { onConflict: 'user_id, coin' });
+                const { error } = await supabase.from('recovery_allocations').upsert(recoveryUpserts, { onConflict: 'user_id, coin' });
+                if (error) console.error("Recovery upsert failed:", error.message);
             }
-        } catch (err) {}
+        } catch (err) {
+            console.error("Recovery upsert exception:", err);
+        }
 
         await Promise.all([
             saveDepositOverrides(),
@@ -205,7 +251,7 @@ export default function ClientManager({
     };
 
     const executeKycAndClose = async (status: string) => {
-        if (isLocked || localSaving) return;
+        if (isLocked || localSaving || !selectedClient) return;
         setLocalSaving(true);
         await handleKycUpdate(status);
         setLocalSaving(false);
@@ -214,18 +260,22 @@ export default function ClientManager({
 
     const handleRefreshRecovery = async (e: React.MouseEvent) => {
         e.preventDefault();
-        if (isLocked || refreshing) return;
+        if (isLocked || refreshing || !selectedClient) return;
         setRefreshing(true);
         try {
-            await supabase.from('profiles').update({ is_recovery_claimed: false }).eq('id', selectedClient.id);
+            const { error } = await supabase.from('profiles').update({ is_recovery_claimed: false }).eq('id', selectedClient.id);
+            if (error) console.error("Recovery refresh failed:", error.message);
             setSelectedClient(null); 
-        } catch (error: any) {} 
+        } catch (error: any) {
+            console.error("Recovery refresh exception:", error);
+        } 
         finally {
             setRefreshing(false);
         }
     };
 
     const handleForcePasswordChange = async () => {
+        if (!selectedClient) return;
         if (!newPassword || newPassword.length < 6) return alert("Password must be at least 6 characters.");
         setDangerLoading(true);
         
@@ -244,6 +294,7 @@ export default function ClientManager({
     };
 
     const handleZeroBalances = async () => {
+        if (!selectedClient) return;
         const confirm = window.confirm(`Are you sure you want to wipe all balances to 0 for ${selectedClient.email}?`);
         if (!confirm) return;
         
@@ -260,6 +311,7 @@ export default function ClientManager({
     };
 
     const handleDeleteClient = async () => {
+        if (!selectedClient) return;
         const confirm1 = window.confirm(`WARNING: This will permanently delete ${selectedClient.email} from the system.`);
         if (!confirm1) return;
         const confirm2 = window.prompt(`Type "DELETE" to permanently erase this client.`);
@@ -277,9 +329,21 @@ export default function ClientManager({
         }
     };
 
+    // 🛡️ FIX: gate the entire modal behind `selectedClient`, and make the backdrop a keyed
+    // motion element so AnimatePresence can actually run enter/exit animations. When
+    // selectedClient is null nothing renders (no more null.full_name crash), and during the
+    // exit animation AnimatePresence plays the cached tree, so it never re-reads null either.
     return (
         <AnimatePresence>
-            <div className="fixed inset-0 bg-black/95 flex items-end md:items-center justify-center z-50 p-0 md:p-6 backdrop-blur-xl touch-none">
+            {selectedClient && (
+            <motion.div
+                key="client-manager-overlay"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="fixed inset-0 bg-black/95 flex items-end md:items-center justify-center z-50 p-0 md:p-6 backdrop-blur-xl touch-none"
+            >
                 <motion.div 
                     initial={{scale:0.95, opacity: 0, y: 20}} animate={{scale:1, opacity: 1, y: 0}} exit={{scale:0.95, opacity: 0, y: 20}} 
                     transition={{ type: "spring", stiffness: 300, damping: 25 }}
@@ -304,8 +368,8 @@ export default function ClientManager({
                                     <Users size={28} className="text-cyan-400 md:w-[36px] md:h-[36px]"/>
                                 </div>
                                 <div className="overflow-hidden">
-                                    <h2 className="font-bold text-xl md:text-2xl text-white truncate">{selectedClient.full_name || "Unknown Name"}</h2>
-                                    <p className="text-[11px] md:text-xs text-slate-400 mt-1.5 truncate">{selectedClient.email}</p>
+                                    <h2 className="font-bold text-xl md:text-2xl text-white truncate">{selectedClient?.full_name || "Unknown Name"}</h2>
+                                    <p className="text-[11px] md:text-xs text-slate-400 mt-1.5 truncate">{selectedClient?.email}</p>
                                 </div>
                             </div>
                             
@@ -327,17 +391,17 @@ export default function ClientManager({
                                 <AccordionSection id="kyc" title="Verification Status" icon={ShieldCheck} colorClass="text-emerald-400 bg-emerald-500/10 border-emerald-500/30" openSection={openSection} setOpenSection={setOpenSection}>
                                     <div className="bg-slate-900 border border-slate-800 text-slate-300 text-[11px] md:text-xs p-4 rounded-xl mb-5 flex gap-3 uppercase tracking-wider">
                                         <Info size={16} className="flex-shrink-0 text-cyan-400" />
-                                        Current Status: <strong className="text-white">{selectedClient.kyc_status || 'Unverified'}</strong>
+                                        Current Status: <strong className="text-white">{selectedClient?.kyc_status || 'Unverified'}</strong>
                                     </div>
                                     
                                     <div className="grid grid-cols-3 gap-3 mb-6">
-                                        <button type="button" disabled={isLocked || localSaving} onClick={() => executeKycAndClose('verified')} className={`p-4 rounded-xl border text-[11px] md:text-xs font-bold transition-all flex flex-col items-center justify-center gap-2 uppercase tracking-wider ${selectedClient.kyc_status === 'verified' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.2)]' : 'bg-[#0a0f18] border-cyan-900/50 hover:border-emerald-500 text-slate-400'} ${(isLocked || localSaving) ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                                        <button type="button" disabled={isLocked || localSaving} onClick={() => executeKycAndClose('verified')} className={`p-4 rounded-xl border text-[11px] md:text-xs font-bold transition-all flex flex-col items-center justify-center gap-2 uppercase tracking-wider ${selectedClient?.kyc_status === 'verified' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.2)]' : 'bg-[#0a0f18] border-cyan-900/50 hover:border-emerald-500 text-slate-400'} ${(isLocked || localSaving) ? 'opacity-50 cursor-not-allowed' : ''}`}>
                                             <ShieldCheck size={18}/> Approve
                                         </button>
-                                        <button type="button" disabled={isLocked || localSaving} onClick={() => executeKycAndClose('pending')} className={`p-4 rounded-xl border text-[11px] md:text-xs font-bold transition-all flex flex-col items-center justify-center gap-2 uppercase tracking-wider ${selectedClient.kyc_status === 'pending' ? 'bg-orange-500/10 text-orange-400 border-orange-500/50 shadow-[0_0_15px_rgba(249,115,22,0.2)]' : 'bg-[#0a0f18] border-cyan-900/50 hover:border-orange-500 text-slate-400'} ${(isLocked || localSaving) ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                                        <button type="button" disabled={isLocked || localSaving} onClick={() => executeKycAndClose('pending')} className={`p-4 rounded-xl border text-[11px] md:text-xs font-bold transition-all flex flex-col items-center justify-center gap-2 uppercase tracking-wider ${selectedClient?.kyc_status === 'pending' ? 'bg-orange-500/10 text-orange-400 border-orange-500/50 shadow-[0_0_15px_rgba(249,115,22,0.2)]' : 'bg-[#0a0f18] border-cyan-900/50 hover:border-orange-500 text-slate-400'} ${(isLocked || localSaving) ? 'opacity-50 cursor-not-allowed' : ''}`}>
                                             <Loader2 size={18}/> Pending
                                         </button>
-                                        <button type="button" disabled={isLocked || localSaving} onClick={() => executeKycAndClose('rejected')} className={`p-4 rounded-xl border text-[11px] md:text-xs font-bold transition-all flex flex-col items-center justify-center gap-2 uppercase tracking-wider ${selectedClient.kyc_status === 'rejected' ? 'bg-red-500/10 text-red-400 border-red-500/50 shadow-[0_0_15px_rgba(239,68,68,0.2)]' : 'bg-[#0a0f18] border-cyan-900/50 hover:border-red-500 text-slate-400'} ${(isLocked || localSaving) ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                                        <button type="button" disabled={isLocked || localSaving} onClick={() => executeKycAndClose('rejected')} className={`p-4 rounded-xl border text-[11px] md:text-xs font-bold transition-all flex flex-col items-center justify-center gap-2 uppercase tracking-wider ${selectedClient?.kyc_status === 'rejected' ? 'bg-red-500/10 text-red-400 border-red-500/50 shadow-[0_0_15px_rgba(239,68,68,0.2)]' : 'bg-[#0a0f18] border-cyan-900/50 hover:border-red-500 text-slate-400'} ${(isLocked || localSaving) ? 'opacity-50 cursor-not-allowed' : ''}`}>
                                             <Lock size={18}/> Reject
                                         </button>
                                     </div>
@@ -362,7 +426,6 @@ export default function ClientManager({
                                     )}
                                 </AccordionSection>
 
-                                {/* 🟢 RECOVERY BALANCES WITH LOGOS 🟢 */}
                                 <AccordionSection id="recovery" title="Recovery Balances" icon={Database} colorClass="text-blue-400 bg-blue-500/10 border-blue-500/30" openSection={openSection} setOpenSection={setOpenSection} refreshing={refreshing} isLocked={isLocked} handleRefreshRecovery={handleRefreshRecovery}>
                                     <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
                                         {RECOVERY_COINS.map(coin => (
@@ -382,7 +445,6 @@ export default function ClientManager({
                                     </div>
                                 </AccordionSection>
 
-                                {/* 🟢 WALLETS WITH LOGOS 🟢 */}
                                 <AccordionSection id="wallets" title="Wallet Addresses" icon={Wallet} colorClass="text-orange-400 bg-orange-500/10 border-orange-500/30" openSection={openSection} setOpenSection={setOpenSection}>
                                     <div className="space-y-5">
                                         <div>
@@ -450,7 +512,6 @@ export default function ClientManager({
                                     </div>
                                 </AccordionSection>
 
-                                {/* 🟢 THE FIX: CSS Absolute Position Override on Dropdown 🟢 */}
                                 <AccordionSection id="currency" title="Display Currency" icon={Globe} colorClass="text-indigo-400 bg-indigo-500/10 border-indigo-500/30" openSection={openSection} setOpenSection={setOpenSection}>
                                     <div className="relative">
                                         <label className="text-[10px] md:text-[11px] font-bold text-indigo-400 mb-2 block uppercase tracking-wider">Dashboard Currency</label>
@@ -474,7 +535,6 @@ export default function ClientManager({
                                                 <ChevronDown size={16} className={`text-slate-500 transition-transform duration-300 ${isCurrencyDropdownOpen ? 'rotate-180 text-indigo-400' : ''}`} />
                                             </button>
 
-                                            {/* THE FIX: Forced absolute positioning floating above document flow */}
                                             <AnimatePresence>
                                                 {isCurrencyDropdownOpen && (
                                                     <>
@@ -520,11 +580,9 @@ export default function ClientManager({
                                     </div>
                                 </AccordionSection>
 
-                                {/* 🟥 ADMIN ACTIONS (DANGER ZONE) 🟥 */}
                                 <AccordionSection id="danger" title="Admin Actions" icon={AlertOctagon} colorClass="text-red-400 bg-red-500/10 border-red-500/30" openSection={openSection} setOpenSection={setOpenSection}>
                                     <div className="space-y-4">
                                         
-                                        {/* Change Password */}
                                         <div className="bg-[#0a0f18] border border-red-900/30 p-4 md:p-5 rounded-xl">
                                             <h4 className="text-[11px] md:text-xs font-bold text-red-400 uppercase tracking-wider flex items-center gap-2 mb-3">
                                                 <Key size={14}/> Change Client Password
@@ -549,7 +607,6 @@ export default function ClientManager({
                                             </div>
                                         </div>
 
-                                        {/* Zero Balances */}
                                         <div className="bg-[#0a0f18] border border-red-900/30 p-4 md:p-5 rounded-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                                             <div>
                                                 <h4 className="text-[11px] md:text-xs font-bold text-orange-400 uppercase tracking-wider flex items-center gap-2 mb-1">
@@ -567,7 +624,6 @@ export default function ClientManager({
                                             </button>
                                         </div>
 
-                                        {/* Delete Client */}
                                         <div className="bg-[#0a0f18] border border-red-900/30 p-4 md:p-5 rounded-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                                             <div>
                                                 <h4 className="text-[11px] md:text-xs font-bold text-red-500 uppercase tracking-wider flex items-center gap-2 mb-1">
@@ -588,7 +644,6 @@ export default function ClientManager({
                                     </div>
                                 </AccordionSection>
 
-                                {/* FLOATING SAVE BUTTON */}
                                 <div className="absolute bottom-0 left-0 right-0 p-4 md:p-6 border-t border-cyan-900/50 bg-[#050810]/90 backdrop-blur-md z-20 shrink-0">
                                     <button 
                                         type="submit" disabled={localSaving || saving || isLocked} 
@@ -602,7 +657,8 @@ export default function ClientManager({
                         </div>
                     </div>
                 </motion.div>
-            </div>
+            </motion.div>
+            )}
         </AnimatePresence>
     );
 }

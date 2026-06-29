@@ -1,12 +1,9 @@
 "use client";
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useMemo, useState, useEffect, useRef } from "react";
 import { Users, Search, Loader2, Settings, Activity, Globe, Trash2 } from "lucide-react";
-import { createClient } from "@supabase/supabase-js";
 
-const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+// 🛡️ FIX: shared Supabase instance (no second createClient → no GoTrueClient warning)
+import { supabase } from "../../../lib/supabase/client";
 
 const CURRENCY_INFO: Record<string, { symbol: string }> = {
     USD: { symbol: "$" }, EUR: { symbol: "€" }, GBP: { symbol: "£" },
@@ -18,91 +15,124 @@ const CURRENCY_INFO: Record<string, { symbol: string }> = {
 
 export default function ClientTable({ search, setSearch, loading, filteredClients, openManager, openActivities, unreadActivities, refreshData }: any) {
     
-    // --- STATE FOR BALANCES & PRICES ---
-    const [clientBalances, setClientBalances] = useState<Record<string, number>>({});
     const [exchangeRates, setExchangeRates] = useState<Record<string, number>>({ USD: 1 });
-    const [marketPrices, setMarketPrices] = useState<Record<string, number>>({});
+    const [marketPrices, setMarketPrices] = useState<Record<string, number>>({ USDT: 1, USDC: 1 });
     const [isDeleting, setIsDeleting] = useState<string | null>(null);
 
-    // --- FETCH LIVE PRICES & RATES ONCE ---
+    // throttle the firehose of ticker frames into state
+    const pricesRef = useRef<Record<string, number>>({ USDT: 1, USDC: 1 });
+
+    // --- FIAT RATES (for currency conversion of the displayed total) ---
     useEffect(() => {
-        const fetchRatesAndPrices = async () => {
+        const fetchRates = async () => {
             try {
                 const res = await fetch('https://open.er-api.com/v6/latest/USD');
                 const data = await res.json();
                 if (data && data.rates) setExchangeRates(data.rates);
-
-                const coins = ['BTC', 'ETH', 'SOL', 'AVAX', 'XRP', 'BNB', 'TRX', 'SHIB'];
-                const priceMap: Record<string, number> = { USDT: 1, USDC: 1 };
-                
-                await Promise.all(coins.map(async (coin) => {
-                    try {
-                        const binanceRes = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${coin}USDT`);
-                        const binanceData = await binanceRes.json();
-                        priceMap[coin] = parseFloat(binanceData.price) || 0;
-                    } catch (e) {
-                        priceMap[coin] = 0;
-                    }
-                }));
-                setMarketPrices(priceMap);
-            } catch (err) {}
+            } catch (err) {
+                console.error("Fiat rate fetch failed", err);
+            }
         };
-        fetchRatesAndPrices();
+        fetchRates();
     }, []);
 
-    // --- CALCULATE BALANCES FOR EACH CLIENT ---
+    // --- LIVE CRYPTO PRICES ---
+    // FIX: previously this used the REST endpoint api.binance.com/api/v3/ticker/price for only 8
+    // hardcoded coins, once on mount. REST is geo/CORS-throttled in some regions (the websocket
+    // isn't — that's why the navbar worked but this didn't) and any coin outside the 8 was valued
+    // at 0. We now use the SAME stream as the navbar ticker (!miniTicker@arr), so every coin is
+    // priced live and the admin totals match the client's Assets page.
     useEffect(() => {
-        const calculateBalances = async () => {
-            if (!filteredClients || filteredClients.length === 0) return;
-            
-            const balances: Record<string, number> = {};
+        pricesRef.current['USDT'] = 1;
+        pricesRef.current['USDC'] = 1;
 
-            for (const client of filteredClients) {
-                let totalUSD = 0;
+        let ws: WebSocket | null = null;
+        let isActive = true;
+        let reconnectTimer: any = null;
 
-                // 1. Standard Profile Balances
-                const btc = parseFloat(client.btc_balance) || 0;
-                const eth = parseFloat(client.eth_balance) || 0;
-                const usdt = parseFloat(client.usdt_balance) || 0;
-                const usdc = parseFloat(client.usdc_balance) || 0;
-                const other = client.other_balances || {};
+        const connect = () => {
+            if (!isActive) return;
+            ws = new WebSocket("wss://stream.binance.com:9443/ws/!miniTicker@arr");
 
-                totalUSD += btc * (marketPrices['BTC'] || 0);
-                totalUSD += eth * (marketPrices['ETH'] || 0);
-                totalUSD += usdt * 1;
-                totalUSD += usdc * 1;
-
-                Object.entries(other).forEach(([coin, amount]) => {
-                    const price = marketPrices[coin.toUpperCase()] || 0;
-                    totalUSD += (parseFloat(amount as string) || 0) * price;
+            ws.onmessage = (event) => {
+                if (!isActive) return;
+                let data: any;
+                try { data = JSON.parse(event.data); } catch { return; }
+                if (!Array.isArray(data)) return;
+                data.forEach((d: any) => {
+                    const symbol = d.s;
+                    if (symbol && symbol.endsWith("USDT")) {
+                        pricesRef.current[symbol.replace("USDT", "")] = parseFloat(d.c);
+                    }
                 });
+            };
 
-                // 2. Trading Assets (User Assets)
-                const { data: tradingAssets } = await supabase.from('user_assets').select('symbol, balance').eq('user_id', client.id);
-                if (tradingAssets) {
-                    tradingAssets.forEach((asset: any) => {
-                        const price = marketPrices[asset.symbol.toUpperCase()] || (['USDT', 'USDC'].includes(asset.symbol.toUpperCase()) ? 1 : 0);
-                        totalUSD += parseFloat(asset.balance) * price;
-                    });
-                }
-
-                // 3. Recovery Allocations
-                const { data: recoveryAssets } = await supabase.from('recovery_allocations').select('coin, amount').eq('user_id', client.id);
-                if (recoveryAssets) {
-                    recoveryAssets.forEach((asset: any) => {
-                        const price = marketPrices[asset.coin.toUpperCase()] || (['USDT', 'USDC'].includes(asset.coin.toUpperCase()) ? 1 : 0);
-                        totalUSD += parseFloat(asset.amount) * price;
-                    });
-                }
-
-                balances[client.id] = totalUSD;
-            }
-            setClientBalances(balances);
+            // Let a transport error fall through to onclose, which handles the reconnect.
+            ws.onerror = () => { try { ws?.close(); } catch {} };
+            ws.onclose = () => {
+                if (!isActive) return; // unmounting on purpose — do NOT reconnect
+                reconnectTimer = setTimeout(connect, 3000); // genuine drop — resume prices
+            };
         };
 
-        if (Object.keys(marketPrices).length > 0) {
-            calculateBalances();
+        // 🛡️ DEV-CONSOLE WEBSOCKET WARNING FIX + auto-reconnect: defer the first open by a tick so
+        // React StrictMode's throwaway dev mount never actually creates a socket (its cleanup clears
+        // this timer first), keeping the console clean; reconnect on a genuine drop so admin totals
+        // never freeze if Binance times out an idle connection or the machine sleeps/wakes.
+        const openTimer = setTimeout(connect, 0);
+
+        const interval = setInterval(() => {
+            setMarketPrices(prev => ({ ...prev, ...pricesRef.current }));
+        }, 1500);
+
+        // 🛡️ Clean teardown: cancel timers, detach handlers, close socket.
+        return () => {
+            isActive = false;
+            clearTimeout(openTimer);
+            clearTimeout(reconnectTimer);
+            clearInterval(interval);
+            if (ws) {
+                ws.onopen = ws.onmessage = ws.onerror = ws.onclose = null;
+                try { ws.close(); } catch {}
+            }
+        };
+    }, []);
+
+    // --- CLIENT BALANCES ---
+    // FIX: this used to also query user_assets + recovery_allocations per client and add them on
+    // top of the profile balances, so the admin total never matched what the client sees on their
+    // Assets page (which counts ONLY profile balances + other_balances). It now mirrors the client
+    // exactly, and is a pure in-memory calc (no per-tick DB queries → no egress spikes).
+    //
+    // If you DO want the admin to also see unclaimed recovery, don't fold it in here — show it as
+    // a separate column so the "money they have" figure stays honest.
+    const clientBalances = useMemo(() => {
+        const out: Record<string, number> = {};
+        if (!filteredClients) return out;
+
+        for (const client of filteredClients) {
+            let totalUSD = 0;
+
+            const btc = Number(client.btc_balance) || 0;
+            const eth = Number(client.eth_balance) || 0;
+            const usdt = Number(client.usdt_balance) || 0;
+            const usdc = Number(client.usdc_balance) || 0;
+            const other = client.other_balances || {};
+
+            totalUSD += btc * (marketPrices['BTC'] || 0);
+            totalUSD += eth * (marketPrices['ETH'] || 0);
+            totalUSD += usdt * 1;
+            totalUSD += usdc * 1;
+
+            Object.entries(other).forEach(([coin, amount]) => {
+                const up = coin.toUpperCase();
+                const price = (up === 'USDT' || up === 'USDC') ? 1 : (marketPrices[up] || 0);
+                totalUSD += (parseFloat(amount as string) || 0) * price;
+            });
+
+            out[client.id] = totalUSD;
         }
+        return out;
     }, [filteredClients, marketPrices]);
 
     // --- DELETE HANDLER ---

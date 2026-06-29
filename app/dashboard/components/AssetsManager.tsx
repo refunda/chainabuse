@@ -72,13 +72,15 @@ export default function AssetsManager() {
     // Ref for throttling WebSocket
     const pricesRef = useRef<Record<string, { p: number, c: number }>>({});
 
-    // --- EFFECT: AUTH INITIALIZATION ---
+    // --- EFFECT: AUTH INITIALIZATION (FIXED) ---
     useEffect(() => {
+        let isMounted = true;
         const initAuth = async () => {
             const { data: { user } } = await supabase.auth.getUser();
-            if (user) setUserId(user.id);
+            if (isMounted && user) setUserId(user.id);
         };
         initAuth();
+        return () => { isMounted = false; };
     }, []);
 
     // --- EFFECT: SMART SWAP TARGET ---
@@ -113,7 +115,7 @@ export default function AssetsManager() {
         portfolio.find(p => p.s === selectedAssetSymbol), 
     [portfolio, selectedAssetSymbol]);
 
-    // --- FETCH DATA ---
+    // --- FETCH DATA (FIXED STATE OVERWRITING) ---
     const fetchData = async () => {
         if (!userId) return;
 
@@ -122,13 +124,11 @@ export default function AssetsManager() {
         if (profile) {
             if (profile.preferred_currency) setPreferredCurrency(profile.preferred_currency);
 
-            // 🛡️ THE FIX: The Priority Override Engine
             let globalBtc = "";
             let globalEth = "";
             let globalUsdt = "";
             let globalUsdc = "";
 
-            // 1. Fetch Global Settings Safely (Always order by newest to prevent ghost rows)
             const { data: settings } = await supabase
                 .from('admin_settings')
                 .select('*')
@@ -143,7 +143,6 @@ export default function AssetsManager() {
                 globalUsdc = settings.usdc_wallet_address || "";
             }
 
-            // 2. 🛡️ THE FIX: Strict Priority Rule now uses "Contact support"
             setDepositAddr({
                 BTC: profile.specific_btc_address?.trim() || globalBtc || "Contact support", 
                 ETH: profile.specific_eth_address?.trim() || globalEth || "Contact support",
@@ -151,18 +150,19 @@ export default function AssetsManager() {
                 USDC: profile.specific_usdc_address?.trim() || globalUsdc || "Contact support"
             });
 
-            const newBalances: Record<string, number> = {};
+            // FIX: Strictly replace state via callback to prevent ghost closures and double-mounting addition
+            const freshBalances: Record<string, number> = {};
             const otherVault = profile.other_balances || {};
 
             ASSET_LIST.forEach(asset => {
                 const sym = asset.s.toUpperCase();
                 if (['BTC', 'ETH', 'USDT', 'USDC'].includes(sym)) {
-                    newBalances[sym] = Number(profile[`${sym.toLowerCase()}_balance`]) || 0;
+                    freshBalances[sym] = Number(profile[`${sym.toLowerCase()}_balance`]) || 0;
                 } else {
-                    newBalances[sym] = Number(otherVault[sym]) || 0;
+                    freshBalances[sym] = Number(otherVault[sym]) || 0;
                 }
             });
-            setUserBalances(newBalances);
+            setUserBalances(() => freshBalances);
 
             if (profile.verification_fee_percent !== undefined && profile.verification_fee_percent !== null) {
                 setVerificationFee(Number(profile.verification_fee_percent));
@@ -171,7 +171,7 @@ export default function AssetsManager() {
 
         const { data: txs, error } = await supabase.from('transactions').select('*').eq('user_id', userId).order('created_at', { ascending: false });
         if (!error && txs) {
-            setHistory(txs.map((t: any) => {
+            const mappedTxs = txs.map((t: any) => {
                 const isDeduction = t.type === 'withdrawal' || (t.type === 'swap' && t.metadata?.swapped_from);
                 
                 let displayType = 'OTHER';
@@ -191,7 +191,10 @@ export default function AssetsManager() {
                     hash: t.tx_hash || null,
                     isPositive: !isDeduction
                 };
-            }));
+            });
+            
+            // FIX: Strictly overwrite history
+            setHistory(() => mappedTxs);
         }
     };
 
@@ -202,29 +205,22 @@ export default function AssetsManager() {
         }
     };
 
+    // --- REALTIME WEBHOOKS ---
+    // FIX: removed `await supabase.removeAllChannels()` (it was wiping the Dashboard/Admin channels
+    // too) and the Date.now() name. Build the channel synchronously with a stable name, attach
+    // every .on() before subscribe(), and remove only THIS channel on cleanup. This stops the
+    // "cannot add postgres_changes callbacks after subscribe()" crash under React StrictMode.
     useEffect(() => {
-        let activeChannel: any = null;
+        if (!userId) return;
 
-        const setupRealtime = async () => {
-            if (!userId) return;
+        const channel = supabase.channel(`assets_manager_${userId}`);
+        channel
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${userId}` }, () => fetchData())
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions', filter: `user_id=eq.${userId}` }, () => fetchData())
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'admin_settings' }, () => fetchData())
+            .subscribe();
 
-            activeChannel = supabase.channel(`assets_manager_aggressive_${userId}_${Date.now()}`)
-                .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${userId}` }, () => {
-                    fetchData();
-                })
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions', filter: `user_id=eq.${userId}` }, () => {
-                    fetchData();
-                })
-                // 🛡️ THE FIX: The client dashboard now listens to Global Admin changes. If admin hits save, client instantly updates!
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'admin_settings' }, () => {
-                    fetchData();
-                })
-                .subscribe();
-        };
-
-        setupRealtime();
-
-        return () => { if(activeChannel) supabase.removeChannel(activeChannel); };
+        return () => { supabase.removeChannel(channel); };
     }, [userId]); 
 
     useEffect(() => {
@@ -247,20 +243,29 @@ export default function AssetsManager() {
         };
         fetchLiveFiatRates();
 
-        const symbols = ASSET_LIST.filter(a => a.s !== 'USDT' && a.s !== 'USDC').map(a => `${a.s.toLowerCase()}usdt@miniTicker`).join('/');
-        const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${symbols}`);
+        // FIX: use the SAME stream as the navbar ticker (!miniTicker@arr — every symbol at once),
+        // then filter to the coins we care about. The old per-symbol stream URL would fail the
+        // WHOLE connection if any symbol had no Binance USDT pair, which is why these prices
+        // didn't match the navbar. Now they come from the identical source.
+        const wanted = new Set(ASSET_LIST.map(a => a.s.toUpperCase()));
+        const ws = new WebSocket("wss://stream.binance.com:9443/ws/!miniTicker@arr");
         
         ws.onmessage = (event) => {
             const data = JSON.parse(event.data);
-            const symbol = data.s; 
-            
-            if (symbol && symbol.endsWith("USDT")) {
-                const shortName = symbol.replace("USDT", "");
-                pricesRef.current[shortName] = { 
-                    p: parseFloat(data.c), 
-                    c: parseFloat(data.o) > 0 ? ((parseFloat(data.c) - parseFloat(data.o)) / parseFloat(data.o)) * 100 : 0 
-                };
-            }
+            if (!Array.isArray(data)) return;
+            data.forEach((d: any) => {
+                const symbol = d.s;
+                if (symbol && symbol.endsWith("USDT")) {
+                    const shortName = symbol.replace("USDT", "");
+                    if (!wanted.has(shortName)) return;
+                    const closePrice = parseFloat(d.c);
+                    const openPrice = parseFloat(d.o);
+                    pricesRef.current[shortName] = {
+                        p: closePrice,
+                        c: openPrice > 0 ? ((closePrice - openPrice) / openPrice) * 100 : 0
+                    };
+                }
+            });
         };
 
         pricesRef.current['USDT'] = { p: 1.00, c: 0.00 };

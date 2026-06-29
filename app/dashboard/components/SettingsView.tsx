@@ -36,9 +36,6 @@ export default function SettingsView({ initialTab = "general", user, onProfileUp
                 user.full_name = user.raw_user_meta_data.full_name;
             }
             setCurrentUser(user);
-            
-            // THE FIX: Completely removed the old Telegram/Support Link fetching. 
-            // We now just rely on the hardcoded support@chainabuse.ai in the UI.
         }
     }, [initialTab, user]);
 
@@ -112,6 +109,21 @@ const SupportTab = ({ user }: any) => {
     const [emailMessage, setEmailMessage] = useState("");
     const [emailLoading, setEmailLoading] = useState(false);
 
+    // 🛡️ THE CRITICAL FIX (this single block was breaking realtime across the WHOLE app):
+    // The previous version called `await supabase.removeAllChannels()` before creating this
+    // channel. removeAllChannels() is a GLOBAL kill switch — every time the Support tab mounted,
+    // OR the local `view` changed (menu → chat → menu …), it tore down EVERY realtime channel in
+    // the entire app at once: the dashboard balance listener, the Assets listener, the sidebar
+    // verification-badge listener, and the master support-notification listener on the page shell.
+    // That is exactly why balances/verification updates only worked intermittently and appeared to
+    // "fix themselves" after a hard refresh (a refresh rebuilds all of those channels from scratch).
+    //
+    // The robust pattern: build the channel SYNCHRONOUSLY with a STABLE name, attach both listeners
+    // BEFORE subscribe(), and on cleanup remove ONLY this channel. We also dropped the Date.now()
+    // suffix — a colliding timestamp under React StrictMode's double-mount is what triggers the
+    // "cannot add postgres_changes callbacks after subscribe()" crash. Two filtered listeners
+    // (messages addressed TO me, and FROM me) replace the single unfiltered one so this component
+    // only reacts to this user's own conversation. The 3s poll stays as a safety net.
     useEffect(() => {
         if (!user?.id) return;
         let isMounted = true;
@@ -129,9 +141,9 @@ const SupportTab = ({ user }: any) => {
 
             if (isMounted && data) {
                 const visibleMessages = data.filter((m: any) => m.subject !== 'New Registration');
-                setMessages(visibleMessages);
+                setMessages(() => visibleMessages); // 🛡️ Strict state overwrite
                 
-                // 🛡️ THE FIX: If admin hard-deletes the chat, kick the user out of the chat view
+                // 🛡️ If admin hard-deletes the chat, kick the user out of the chat view
                 if (visibleMessages.length === 0 && view === "chat") {
                     setView("menu");
                 } else if (visibleMessages.length > 0 && view !== "email_form" && view !== "email_success") {
@@ -141,14 +153,14 @@ const SupportTab = ({ user }: any) => {
         };
 
         loadMessages();
-        const pollInterval = setInterval(loadMessages, 3000);
 
-        // 🛡️ THE FIX: Changed event to '*' so it detects DELETE actions
-        const channel = supabase.channel(`chat-room-${user.id}_${Date.now()}`)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'support_messages' }, () => {
-                loadMessages();
-            })
+        const channel = supabase.channel(`chat_room_${user.id}`);
+        channel
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'support_messages', filter: `receiver_id=eq.${user.id}` }, () => loadMessages())
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'support_messages', filter: `sender_id=eq.${user.id}` }, () => loadMessages())
             .subscribe();
+
+        const pollInterval = setInterval(loadMessages, 3000);
 
         return () => { 
             isMounted = false;

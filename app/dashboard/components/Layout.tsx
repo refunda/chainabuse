@@ -36,9 +36,10 @@ const CryptoTicker = () => {
 
         ws.onmessage = (event) => {
             const data = JSON.parse(event.data);
+            if (!Array.isArray(data)) return;
             data.forEach((d: any) => {
                 const symbol = d.s; 
-                if (symbol.endsWith("USDT")) {
+                if (symbol && symbol.endsWith("USDT")) {
                     const shortName = symbol.replace("USDT", ""); 
                     const closePrice = parseFloat(d.c);
                     const openPrice = parseFloat(d.o);
@@ -138,6 +139,30 @@ export default function Layout({ children, activeTab, setActiveTab, user }: any)
   useEffect(() => {
     setProfile(user);
   }, [user]);
+
+  // 🛡️ FIX (verification badge not updating for the client):
+  // The parent fetches `user` once and never refreshes it, so when the admin flips KYC to
+  // "verified" the sidebar kept showing PENDING until a full re-login. We subscribe to THIS user's
+  // own profile row and refetch on any UPDATE, then push it into local `profile` state.
+  //
+  // IMPORTANT: this only works live if (1) realtime is enabled for the `profiles` table and
+  // (2) RLS lets the client SELECT their own row. If either is missing, no realtime code fires —
+  // see the SQL checks in chat. The `setProfile(user)` effect above still covers the on-load case.
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const refetchProfile = async () => {
+      const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+      if (data) setProfile(data);
+    };
+
+    const channel = supabase.channel(`layout_profile_${user.id}`);
+    channel
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${user.id}` }, () => refetchProfile())
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [user?.id]);
 
   useEffect(() => {
     const handleResize = () => {
