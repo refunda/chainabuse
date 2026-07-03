@@ -279,7 +279,7 @@ const SupportTab = ({ user }: any) => {
                         <button onClick={() => setView("email_form")} className="flex-1 p-6 rounded-2xl bg-slate-900/50 border border-slate-700 hover:border-cyan-500/50 hover:bg-slate-800 transition-all group">
                             <Send className="w-8 h-8 mx-auto mb-4 text-slate-500 group-hover:text-cyan-400 transition-colors" />
                             <div className="font-black text-white uppercase tracking-widest mb-1 text-sm md:text-base">Email Support</div>
-                            <div className="text-[10px] font-mono text-slate-500 uppercase">support@chainabuse.ai</div>
+                            <div className="text-[10px] font-mono text-slate-500 uppercase">support@chainabuse.Tech</div>
                         </button>
 
                         <button onClick={() => setView("ticket")} className="flex-1 p-6 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 hover:bg-cyan-500/20 transition-all shadow-[0_0_20px_rgba(6,182,212,0.1)] group">

@@ -15,8 +15,8 @@ export async function POST(request: Request) {
         const resend = new Resend(process.env.RESEND_API_KEY);
         
         await resend.emails.send({
-            from: 'system@chainabuse.ai', 
-            to: 'support@chainabuse.ai',
+            from: 'system@chainabuse.tech', 
+            to: 'support@chainabuse.tech',
             reply_to: senderEmail,
             subject: `[Support Ticket] ${topic}`,
             text: `Sender: ${senderEmail}\nUser Node ID: ${userId}\n\nDiagnostic Payload:\n${message}`,
