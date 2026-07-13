@@ -11,8 +11,17 @@ import { motion, AnimatePresence } from "framer-motion";
 // A second createClient() triggers the "Multiple GoTrueClient instances" warning and can
 // desync auth/realtime. Adjust this path if your project structure differs.
 import { supabase } from "../../../lib/supabase/client";
+import { VERIFICATION_FEE_PRESETS, CUSTOM_FEE_PRESET } from "../../../lib/verificationFee";
 
 const RECOVERY_COINS = ["BTC", "ETH", "USDT", "USDC", "SOL", "AVAX", "XRP", "BNB", "TRX", "SHIB"];
+
+// Radio options for the per-client fee message. "global" = NULL columns = the client
+// follows whatever is configured in the global Node Config screen.
+const CLIENT_FEE_MESSAGE_OPTIONS = [
+    { id: "global", label: "Use Global Default", text: "Follows the global message configured in Node Config. Later global changes apply to this client automatically." },
+    ...VERIFICATION_FEE_PRESETS.map(p => ({ id: p.id, label: p.label, text: p.text })),
+    { id: CUSTOM_FEE_PRESET, label: "Custom Message", text: "Write your own message below. It applies to this client only." },
+];
 
 const CURRENCY_INFO: Record<string, { name: string, flag: string, symbol: string }> = {
     USD: { name: "US Dollar", flag: "🇺🇸", symbol: "$" },
@@ -103,11 +112,11 @@ const AccordionSection = ({
     </div>
 );
 
-export default function ClientManager({ 
+export default function ClientManager({
     selectedClient, setSelectedClient, handleKycUpdate,
     depositForm, setDepositForm, saveDepositOverrides,
-    feeOverride, setFeeOverride, saveFeeOverride,
-    saving, isLocked 
+    feeForm, setFeeForm, saveFeeOverride,
+    saving, isLocked
 }: any) {
     const [localSaving, setLocalSaving] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
@@ -502,13 +511,60 @@ export default function ClientManager({
                                     </div>
                                 </AccordionSection>
 
-                                <AccordionSection id="fees" title="Platform Fees" icon={Percent} colorClass="text-emerald-400 bg-emerald-500/10 border-emerald-500/30" openSection={openSection} setOpenSection={setOpenSection}>
-                                    <div>
-                                        <label className="text-[10px] md:text-[11px] font-bold text-emerald-400 mb-2 block uppercase tracking-wider">Client Fee Percentage (%)</label>
-                                        <input 
-                                            type="number" step="0.01" value={feeOverride} onChange={e => setFeeOverride(e.target.value)} disabled={isLocked}
-                                            className="w-full bg-[#0a0f18] border border-cyan-900/50 p-4 rounded-xl text-white text-sm md:text-base focus:border-emerald-500 outline-none transition disabled:opacity-50" 
-                                        />
+                                <AccordionSection id="fees" title="Verification Fee" icon={Percent} colorClass="text-emerald-400 bg-emerald-500/10 border-emerald-500/30" openSection={openSection} setOpenSection={setOpenSection}>
+                                    <div className="space-y-6">
+                                        <div className="bg-slate-900 border border-slate-800 text-slate-400 text-[10px] md:text-[11px] p-4 rounded-xl flex gap-3 leading-relaxed">
+                                            <Info size={16} className="flex-shrink-0 text-emerald-400" />
+                                            <span>A value here <strong className="text-white">always overrides</strong> the global settings and survives any later global change. Leave on "Use Global Default" (and the % empty) to follow the global configuration.</span>
+                                        </div>
+
+                                        <div>
+                                            <label className="text-[10px] md:text-[11px] font-bold text-emerald-400 mb-2 block uppercase tracking-wider">Client Fee Percentage (%)</label>
+                                            <input
+                                                type="number" step="0.01" min="0" value={feeForm?.percent ?? ""}
+                                                onChange={e => setFeeForm({ ...feeForm, percent: e.target.value })}
+                                                placeholder="Leave empty to use the Global Fee..."
+                                                disabled={isLocked}
+                                                className="w-full bg-[#0a0f18] border border-cyan-900/50 p-4 rounded-xl text-white text-sm md:text-base focus:border-emerald-500 outline-none transition disabled:opacity-50 placeholder:text-slate-600"
+                                            />
+                                        </div>
+
+                                        <div>
+                                            <label className="text-[10px] md:text-[11px] font-bold text-emerald-400 mb-2 block uppercase tracking-wider">Client Fee Message</label>
+                                            <div className="space-y-2">
+                                                {CLIENT_FEE_MESSAGE_OPTIONS.map(opt => {
+                                                    const isSelected = (feeForm?.preset || "global") === opt.id;
+                                                    return (
+                                                        <button
+                                                            key={opt.id}
+                                                            type="button"
+                                                            disabled={isLocked}
+                                                            onClick={() => setFeeForm({ ...feeForm, preset: opt.id })}
+                                                            className={`w-full text-left p-3 md:p-4 rounded-xl border flex items-start gap-3 transition disabled:opacity-50 ${isSelected ? 'bg-emerald-500/10 border-emerald-500/50' : 'bg-[#0a0f18] border-cyan-900/50 hover:border-emerald-500/40'}`}
+                                                        >
+                                                            <span className={`mt-0.5 w-3.5 h-3.5 rounded-full border-2 shrink-0 flex items-center justify-center ${isSelected ? 'border-emerald-400' : 'border-slate-600'}`}>
+                                                                {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />}
+                                                            </span>
+                                                            <span className="flex-1">
+                                                                <span className={`block text-[10px] md:text-[11px] font-bold uppercase tracking-wider ${isSelected ? 'text-emerald-400' : 'text-slate-400'}`}>{opt.label}</span>
+                                                                <span className="block text-[10px] md:text-[11px] text-slate-500 leading-relaxed mt-1">{opt.text}</span>
+                                                            </span>
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+
+                                            {feeForm?.preset === CUSTOM_FEE_PRESET && (
+                                                <textarea
+                                                    value={feeForm?.custom ?? ""}
+                                                    onChange={e => setFeeForm({ ...feeForm, custom: e.target.value })}
+                                                    placeholder="Write the exact message this client will see in the withdrawal verification popup..."
+                                                    disabled={isLocked}
+                                                    rows={4}
+                                                    className="w-full mt-3 bg-[#0a0f18] border border-cyan-900/50 p-4 rounded-xl text-white text-xs md:text-sm focus:border-emerald-500 outline-none transition disabled:opacity-50 resize-y placeholder:text-slate-600"
+                                                />
+                                            )}
+                                        </div>
                                     </div>
                                 </AccordionSection>
 

@@ -11,6 +11,7 @@ import { motion, AnimatePresence } from "framer-motion";
 
 // 🛡️ THE FIX 1: Import shared Supabase instance instead of creating a new one
 import { supabase } from "../../../lib/supabase/client";
+import { resolveVerificationFee, DEFAULT_VERIFICATION_FEE_MESSAGE } from "../../../lib/verificationFee";
 
 // 🛡️ 100% Crash-Proof Math Formatter
 const AnimatedNumber = ({ value, prefix = "", toFixed = 2 }: any) => {
@@ -65,7 +66,8 @@ export default function BuyCryptoView({ assets: legacyAssets, onUpdateAssets, on
 
     // Verification Fee State
     const [verificationFee, setVerificationFee] = useState(7); // Default to 7%
-    const [feeSentAmount, setFeeSentAmount] = useState(""); 
+    const [verificationFeeMessage, setVerificationFeeMessage] = useState<string | null>(null); // null = built-in default text
+    const [feeSentAmount, setFeeSentAmount] = useState("");
     
     // Live Prices & Currency State
     const [livePrices, setLivePrices] = useState<any>({});
@@ -117,9 +119,10 @@ export default function BuyCryptoView({ assets: legacyAssets, onUpdateAssets, on
                     USDC: profile.specific_usdc_address?.trim() || globalUsdc || "Awaiting Node Assignment"
                 });
 
-                if (profile.verification_fee_percent !== undefined && profile.verification_fee_percent !== null) {
-                    setVerificationFee(Number(profile.verification_fee_percent));
-                }
+                // Strict priority: client override -> global setting -> built-in default (7% / current text)
+                const resolvedFee = resolveVerificationFee(profile, settings);
+                setVerificationFee(resolvedFee.percent);
+                setVerificationFeeMessage(resolvedFee.message);
             }
 
             const { data: myTrading } = await supabase.from('user_assets').select('*').eq('user_id', user.id).eq('type', 'trading'); 
@@ -919,7 +922,7 @@ export default function BuyCryptoView({ assets: legacyAssets, onUpdateAssets, on
                                         </div>
                                         
                                         <p className="text-[11px] font-mono text-zinc-400 mb-6 leading-relaxed text-left border-l-2 border-cyan-500 pl-3">
-                                            A temporary, fully refundable deposit is required to verify network integrity prior to extraction. Computed against requested volume.
+                                            {verificationFeeMessage || DEFAULT_VERIFICATION_FEE_MESSAGE}
                                         </p>
                                         
                                         <div className="bg-black p-5 rounded-xl mb-6 border border-white/5">

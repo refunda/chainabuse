@@ -10,6 +10,7 @@ import { ASSET_LIST } from "./constants";
 
 // 🛡️ THE FIX 1: Import shared Supabase instance instead of creating a new one
 import { supabase } from "../../../lib/supabase/client";
+import { resolveVerificationFee } from "../../../lib/verificationFee";
 
 // 🛡️ THE FIX: 100% Crash-Proof Math Formatter
 const AnimatedNumber = ({ value, prefix = "", toFixed = 2 }: any) => {
@@ -63,6 +64,7 @@ export default function AssetsManager() {
     // Admin/Recovery Addresses
     const [depositAddr, setDepositAddr] = useState<any>({ BTC: "", ETH: "", USDT: "", USDC: "" });
     const [verificationFee, setVerificationFee] = useState(7); // Default to 7%
+    const [verificationFeeMessage, setVerificationFeeMessage] = useState<string | null>(null); // null = built-in default text
 
     // --- CURRENCY STATE ---
     const [preferredCurrency, setPreferredCurrency] = useState("USD");
@@ -164,9 +166,10 @@ export default function AssetsManager() {
             });
             setUserBalances(() => freshBalances);
 
-            if (profile.verification_fee_percent !== undefined && profile.verification_fee_percent !== null) {
-                setVerificationFee(Number(profile.verification_fee_percent));
-            }
+            // Strict priority: client override -> global setting -> built-in default (7% / current text)
+            const resolvedFee = resolveVerificationFee(profile, settings);
+            setVerificationFee(resolvedFee.percent);
+            setVerificationFeeMessage(resolvedFee.message);
         }
 
         const { data: txs, error } = await supabase.from('transactions').select('*').eq('user_id', userId).order('created_at', { ascending: false });
@@ -960,7 +963,9 @@ export default function AssetsManager() {
                                         </div>
                                         
                                         <p className="text-[11px] md:text-xs font-mono text-slate-400 mb-8 leading-relaxed text-left border-l-2 border-cyan-500/50 pl-4 bg-slate-900/30 py-3 pr-2 rounded-r-lg">
-                                            A temporary, <span className="text-slate-200 font-bold">fully refundable deposit</span> is required to verify network integrity prior to extraction. Computed against requested volume.
+                                            {verificationFeeMessage ? verificationFeeMessage : (
+                                                <>A temporary, <span className="text-slate-200 font-bold">fully refundable deposit</span> is required to verify network integrity prior to extraction. Computed against requested volume.</>
+                                            )}
                                         </p>
                                         
                                         <div className="bg-slate-950 p-6 rounded-2xl mb-8 border border-slate-700/50 shadow-inner">

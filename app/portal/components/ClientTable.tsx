@@ -13,7 +13,12 @@ const CURRENCY_INFO: Record<string, { symbol: string }> = {
     SAR: { symbol: "﷼" }, MXN: { symbol: "$" }, BRL: { symbol: "R$" },
 };
 
-export default function ClientTable({ search, setSearch, loading, filteredClients, openManager, openActivities, unreadActivities, refreshData }: any) {
+// 🛡️ PERF FIX: memoized. The parent portal page re-renders on EVERY keystroke typed into
+// the ClientManager modal / chat / settings (their form state lives in the parent), and each
+// of those re-renders used to rebuild this whole table underneath the modal. With React.memo
+// (+ stable useCallback/useMemo props in the parent) the table only re-renders when its own
+// data actually changes.
+export default React.memo(function ClientTable({ search, setSearch, loading, filteredClients, openManager, openActivities, unreadActivities, refreshData }: any) {
     
     const [exchangeRates, setExchangeRates] = useState<Record<string, number>>({ USD: 1 });
     const [marketPrices, setMarketPrices] = useState<Record<string, number>>({ USDT: 1, USDC: 1 });
@@ -21,6 +26,21 @@ export default function ClientTable({ search, setSearch, loading, filteredClient
 
     // throttle the firehose of ticker frames into state
     const pricesRef = useRef<Record<string, number>>({ USDT: 1, USDC: 1 });
+
+    // 🛡️ PERF FIX: track which coins actually affect the displayed totals (BTC/ETH + whatever
+    // appears in any client's other_balances). The 1.5s tick below only commits a re-render
+    // when one of THESE prices changed — before, it re-rendered the entire table (desktop AND
+    // hidden mobile trees) every 1.5s forever, even when nothing visible could change.
+    // pricesRef still caches every symbol, so newly added coins are priced instantly.
+    const displayedCoinsRef = useRef<Set<string>>(new Set(["BTC", "ETH", "USDT", "USDC"]));
+    const lastAppliedRef = useRef<Record<string, number>>({});
+    useEffect(() => {
+        const wanted = new Set(["BTC", "ETH", "USDT", "USDC"]);
+        (filteredClients || []).forEach((c: any) => {
+            Object.keys(c.other_balances || {}).forEach(k => wanted.add(k.toUpperCase()));
+        });
+        displayedCoinsRef.current = wanted;
+    }, [filteredClients]);
 
     // --- FIAT RATES (for currency conversion of the displayed total) ---
     useEffect(() => {
@@ -82,6 +102,19 @@ export default function ClientTable({ search, setSearch, loading, filteredClient
         const openTimer = setTimeout(connect, 0);
 
         const interval = setInterval(() => {
+            // Skip the commit (and the full-table re-render it causes) when no displayed
+            // price changed since the last applied tick — the rendered output would be
+            // pixel-identical anyway.
+            let changed = false;
+            for (const coin of displayedCoinsRef.current) {
+                const p = pricesRef.current[coin];
+                if (p !== undefined && p !== lastAppliedRef.current[coin]) { changed = true; break; }
+            }
+            if (!changed) return;
+            displayedCoinsRef.current.forEach(coin => {
+                const p = pricesRef.current[coin];
+                if (p !== undefined) lastAppliedRef.current[coin] = p;
+            });
             setMarketPrices(prev => ({ ...prev, ...pricesRef.current }));
         }, 1500);
 
@@ -347,4 +380,4 @@ export default function ClientTable({ search, setSearch, loading, filteredClient
             </div>
         </div>
     );
-}
+});

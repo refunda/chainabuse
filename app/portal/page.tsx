@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation"; 
 import { 
     Users, Search, Database, Save, Loader2, 
@@ -18,6 +18,7 @@ import ClientActivities from "./components/ClientActivities";
 
 // 🛡️ THE FIX: Import shared Supabase instance instead of creating a new one to stop yellow warnings
 import { supabase } from "../../lib/supabase/client";
+import { CUSTOM_FEE_PRESET, resolveFeeMessage } from "../../lib/verificationFee";
 
 const RECOVERY_COINS = ["BTC", "ETH", "USDT", "USDC", "SOL", "AVAX", "XRP", "BNB", "TRX", "SHIB"];
 
@@ -56,13 +57,14 @@ export default function AdminPortal() {
     const [selectedClient, setSelectedClient] = useState<any>(null);
     const [activityClient, setActivityClient] = useState<any>(null); 
     const [recoveryForm, setRecoveryForm] = useState<Record<string, string>>({});
-    const [depositForm, setDepositForm] = useState({ btc: "", eth: "", usdt: "", usdc: "" }); 
-    const [feeOverride, setFeeOverride] = useState<number>(7);
+    const [depositForm, setDepositForm] = useState({ btc: "", eth: "", usdt: "", usdc: "" });
+    // Per-client verification fee override. percent "" / preset "global" = no override
+    // (NULL columns) -> the client follows the global settings.
+    const [feeForm, setFeeForm] = useState<{ percent: string; preset: string; custom: string }>({ percent: "", preset: "global", custom: "" });
     const [saving, setSaving] = useState(false);
 
     const [conversations, setConversations] = useState<any[]>([]);
     const [activeConversation, setActiveConversation] = useState<string | null>(null);
-    const [chatInput, setChatInput] = useState("");
     const [unreadTotal, setUnreadTotal] = useState(0);
 
     const [isMuted, setIsMuted] = useState(false);
@@ -90,9 +92,12 @@ export default function AdminPortal() {
         btc_wallet_address: "", eth_wallet_address: "", usdt_wallet_address: "", usdc_wallet_address: "", sol_wallet_address: ""
     });
 
+    // 🛡️ PERF FIX: getSession() reads the locally cached session — getUser() made a network
+    // round-trip to the Supabase auth server on EVERY call (each chat send, mark-as-read,
+    // settings save, radar setup), adding hundreds of ms of dead wait to every click.
     const getActiveUserId = async () => {
-        const { data: { user } } = await supabase.auth.getUser();
-        return user?.id;
+        const { data: { session } } = await supabase.auth.getSession();
+        return session?.user?.id;
     };
 
     // --- AGGRESSIVE REALTIME RADAR ---
@@ -117,21 +122,24 @@ export default function AdminPortal() {
                     if (payload.new.role === 'client') {
                         playNotificationSound(`New uplink detected from ${payload.new.email}`);
                         setNotification({ show: true, title: "NEW UPLINK DETECTED", text: payload.new.email, senderId: payload.new.id, senderEmail: payload.new.email });
-                        fetchAllClients();
+                        debouncedFetchAllClients();
                     }
                 })
-                
+
                 // 2. Listen for Chat Messages
-                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'support_messages' }, async (payload) => {
+                // 🛡️ PERF FIX: server-side filter — the handler only ever acted on rows where
+                // receiver_id === uid (see the check below, kept as a safety net), so filtering at
+                // the source stops irrelevant events from waking this tab up at all.
+                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'support_messages', filter: `receiver_id=eq.${uid}` }, async (payload) => {
                     if (payload.new.receiver_id === uid) {
                         const { data: profile } = await supabase.from('profiles').select('email').eq('id', payload.new.sender_id).single();
                         const senderEmail = profile?.email || "Unknown Client";
 
                         playNotificationSound(`Incoming transmission from ${senderEmail}`);
                         setNotification({ show: true, title: "INCOMING TRANSMISSION", text: payload.new.message, senderId: payload.new.sender_id, senderEmail: senderEmail });
-                        
+
                         setUnreadActivities(prev => ({ ...prev, [payload.new.sender_id]: (prev[payload.new.sender_id] || 0) + 1 }));
-                        fetchMessages();
+                        debouncedFetchMessages();
                     }
                 })
                 
@@ -144,7 +152,7 @@ export default function AdminPortal() {
                         setNotification({ show: true, title: `NETWORK: ${actionType}`, text: `${payload.new.amount} ${payload.new.asset} transfer initiated.`, senderId: payload.new.user_id, senderEmail: clientCheck.email });
                         
                         setUnreadActivities(prev => ({ ...prev, [payload.new.user_id]: (prev[payload.new.user_id] || 0) + 1 }));
-                        fetchAllClients(); 
+                        debouncedFetchAllClients();
                     }
                 })
 
@@ -154,16 +162,20 @@ export default function AdminPortal() {
                     if (clientCheck) {
                         playNotificationSound(`New vault stake locked by ${clientCheck.email}`);
                         setNotification({ show: true, title: `VAULT STAKE INITIATED`, text: `${payload.new.amount} ${payload.new.asset} locked.`, senderId: payload.new.user_id, senderEmail: clientCheck.email });
-                        
+
                         setUnreadActivities(prev => ({ ...prev, [payload.new.user_id]: (prev[payload.new.user_id] || 0) + 1 }));
-                        fetchAllClients(); 
+                        debouncedFetchAllClients();
                     }
                 })
                 .subscribe();
         };
 
         setupRealtime();
-        return () => { if (channel) supabase.removeChannel(channel); };
+        return () => {
+            if (channel) supabase.removeChannel(channel);
+            clearTimeout(radarTimersRef.current.clients);
+            clearTimeout(radarTimersRef.current.messages);
+        };
     }, [isAuthChecking]);
 
     // --- NATIVE HARDWARE AUDIO PROTOCOL ---
@@ -211,10 +223,11 @@ export default function AdminPortal() {
         setNotification(null);
     };
 
-    const handleOpenActivities = (client: any) => {
+    // 🛡️ PERF FIX: stable identity for the memoized ClientTable (see fetchAllClients note).
+    const handleOpenActivities = useCallback((client: any) => {
         setActivityClient(client);
         setUnreadActivities(prev => ({ ...prev, [client.id]: 0 }));
-    };
+    }, []);
 
     const fetchMyIdentity = async () => {
         const uid = await getActiveUserId();
@@ -229,12 +242,31 @@ export default function AdminPortal() {
         }
     };
 
-    const fetchAllClients = async () => {
-        setLoading(true);
-        const { data, error } = await supabase.from('profiles').select('*').eq('role', 'client').order('created_at', { ascending: false }); 
-        if (!error && data) setClients(data);
+    // 🛡️ PERF FIX: useCallback so the memoized ClientTable (which receives this as a prop)
+    // isn't re-rendered by every parent state change (e.g. each keystroke in the manager modal).
+    // Also: only show the full-table "Fetching records..." spinner on the FIRST load — the
+    // realtime radar refetches on every DB event, and blanking + rebuilding the whole table
+    // for each background refresh was itself a major source of visible lag.
+    const hasLoadedClientsRef = useRef(false);
+    const fetchAllClients = useCallback(async () => {
+        if (!hasLoadedClientsRef.current) setLoading(true);
+        const { data, error } = await supabase.from('profiles').select('*').eq('role', 'client').order('created_at', { ascending: false });
+        if (!error && data) { setClients(data); hasLoadedClientsRef.current = true; }
         setLoading(false);
-    };
+    }, []);
+
+    // 🛡️ PERF FIX: one client action can INSERT several rows back-to-back, and each radar event
+    // used to trigger an immediate full refetch (profiles / 1000 joined messages). Trailing
+    // debounce coalesces a burst into a single refetch with the same final data on screen.
+    const radarTimersRef = useRef<{ clients?: ReturnType<typeof setTimeout>; messages?: ReturnType<typeof setTimeout> }>({});
+    const debouncedFetchAllClients = useCallback(() => {
+        clearTimeout(radarTimersRef.current.clients);
+        radarTimersRef.current.clients = setTimeout(() => fetchAllClients(), 500);
+    }, [fetchAllClients]);
+    const debouncedFetchMessages = useCallback(() => {
+        clearTimeout(radarTimersRef.current.messages);
+        radarTimersRef.current.messages = setTimeout(() => fetchMessages(), 500);
+    }, []);
 
     const fetchAdminSettings = async () => {
         const { data } = await supabase.from('admin_settings').select('*').order('created_at', { ascending: false }).limit(1).maybeSingle();
@@ -293,16 +325,16 @@ export default function AdminPortal() {
         }
     };
 
-    const sendMessage = async () => {
-        if (!chatInput.trim() || !activeConversation) return;
+    // 🛡️ PERF FIX: the reply text now lives inside SupportChat's isolated input box (typing no
+    // longer re-renders this whole page + every message bubble per keystroke); the final text
+    // arrives here as an argument instead of via state.
+    const sendMessage = async (msgText: string) => {
+        if (!msgText?.trim() || !activeConversation) return;
         const uid = await getActiveUserId();
         if (!uid) return;
 
-        const msg = chatInput;
-        setChatInput(""); 
-
-        await supabase.from('support_messages').insert({ sender_id: uid, receiver_id: activeConversation, message: msg, is_read: false });
-        fetchMessages(); 
+        await supabase.from('support_messages').insert({ sender_id: uid, receiver_id: activeConversation, message: msgText, is_read: false });
+        fetchMessages();
     };
 
     const deleteChat = async () => {
@@ -342,7 +374,16 @@ export default function AdminPortal() {
                 sol_wallet_address: adminSettings.sol_wallet_address || null
             };
 
-            const id = (adminSettings as any).id;
+            // Resolve the newest row id FRESH at save time: the Verification Fee section may
+            // have just inserted the first row. A stale undefined id would insert a SECOND
+            // row here, and clients (who read the newest row) would lose the fee settings.
+            const { data: latestRow } = await supabase
+                .from('admin_settings')
+                .select('id')
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+            const id = latestRow?.id ?? (adminSettings as any).id;
 
             if (id) {
                 const { error } = await supabase.from('admin_settings')
@@ -380,7 +421,8 @@ export default function AdminPortal() {
         fetchAllClients(); 
     };
 
-    const openManager = async (client: any) => {
+    // 🛡️ PERF FIX: stable identity for the memoized ClientTable (see fetchAllClients note).
+    const openManager = useCallback(async (client: any) => {
         setSelectedClient(client);
         setSaving(true);
         const { data } = await supabase.from('recovery_allocations').select('*').eq('user_id', client.id);
@@ -389,16 +431,26 @@ export default function AdminPortal() {
         if (data) data.forEach((item: any) => { if (RECOVERY_COINS.includes(item.symbol)) rForm[item.symbol] = item.amount; });
         setRecoveryForm(rForm);
 
-        setDepositForm({ 
-            btc: client.specific_btc_address || "", 
+        setDepositForm({
+            btc: client.specific_btc_address || "",
             eth: client.specific_eth_address || "",
             usdt: client.specific_usdt_address || "",
             usdc: client.specific_usdc_address || ""
         });
-        
-        setFeeOverride(client.verification_fee_percent !== null && client.verification_fee_percent !== undefined ? Number(client.verification_fee_percent) : 7);
+
+        // Seed the fee override from the cached row, then refresh from the DB so the
+        // fee UI never shows stale values. NULL columns = "Use global default".
+        const seedFeeForm = (row: any) => setFeeForm({
+            percent: (row?.verification_fee_percent === null || row?.verification_fee_percent === undefined) ? "" : String(row.verification_fee_percent),
+            preset: row?.verification_fee_preset || "global",
+            custom: row?.verification_fee_custom_message || ""
+        });
+        seedFeeForm(client);
+        const { data: freshProfile } = await supabase.from('profiles').select('*').eq('id', client.id).single();
+        if (freshProfile) seedFeeForm(freshProfile);
+
         setSaving(false);
-    };
+    }, []);
 
     const saveRecoveryInjection = async () => {
         if (!selectedClient) return;
@@ -428,15 +480,47 @@ export default function AdminPortal() {
     const saveFeeOverride = async () => {
         if (!selectedClient) return;
         setSaving(true);
-        const { error } = await supabase.from('profiles').update({ verification_fee_percent: feeOverride }).eq('id', selectedClient.id);
-        if (!error) { showToast(`Tax set to ${feeOverride}%.`, "success"); fetchAllClients(); }
-        else showToast("Error modifying tax.", "error");
+
+        const percentValue = feeForm.percent.trim() === "" ? null : Number(feeForm.percent);
+        if (percentValue !== null && (isNaN(percentValue) || percentValue < 0)) {
+            showToast("Invalid fee percentage.", "error");
+            setSaving(false);
+            return;
+        }
+        const preset = feeForm.preset === "global" ? null : feeForm.preset;
+        const custom = feeForm.preset === CUSTOM_FEE_PRESET ? (feeForm.custom.trim() || null) : null;
+
+        // NULL columns = "Use global default"; any value here always wins over the
+        // global settings and survives later global changes.
+        let { error } = await supabase.from('profiles').update({
+            verification_fee_percent: percentValue,
+            verification_fee_preset: preset,
+            verification_fee_custom_message: custom,
+            verification_fee_message: resolveFeeMessage(preset, custom)
+        }).eq('id', selectedClient.id);
+
+        if (error && (error.code === '42703' || error.code === 'PGRST204' || /verification_fee/i.test(error.message || ""))) {
+            // Message columns not installed yet (FEE_UPGRADE.sql not run) — keep the
+            // pre-upgrade behavior working: save the fee % only.
+            ({ error } = await supabase.from('profiles').update({ verification_fee_percent: percentValue }).eq('id', selectedClient.id));
+            if (!error) {
+                showToast("Fee % saved. Run FEE_UPGRADE.sql to enable fee messages.", "error");
+                fetchAllClients();
+                setSaving(false);
+                return;
+            }
+        }
+
+        if (!error) { showToast(percentValue === null && !preset ? "Fee override cleared (global default)." : "Fee override saved.", "success"); fetchAllClients(); }
+        else showToast("Error modifying fee.", "error");
         setSaving(false);
     };
 
-    const filteredClients = clients.filter(c => 
+    // 🛡️ PERF FIX: memoized so the array identity only changes when clients/search change —
+    // otherwise every parent re-render produced a new array and defeated ClientTable's memo.
+    const filteredClients = useMemo(() => clients.filter(c =>
         (c.email || "").toLowerCase().includes(search.toLowerCase()) || (c.full_name || "").toLowerCase().includes(search.toLowerCase())
-    );
+    ), [clients, search]);
 
     let activeChatData = conversations.find(c => c.userId === activeConversation);
     if (activeConversation && !activeChatData) {
@@ -548,18 +632,16 @@ export default function AdminPortal() {
                     )}
 
                     {activeTab === "messages" && (
-                        <SupportChat 
-                            conversations={conversations} 
-                            activeConversation={activeConversation} 
-                            setActiveConversation={setActiveConversation} 
-                            chatInput={chatInput} 
-                            setChatInput={setChatInput} 
-                            sendMessage={sendMessage} 
-                            deleteChat={deleteChat} 
-                            markAsRead={markAsRead} 
-                            activeChatData={activeChatData} 
-                            isMuted={isMuted} 
-                            setIsMuted={setIsMuted} 
+                        <SupportChat
+                            conversations={conversations}
+                            activeConversation={activeConversation}
+                            setActiveConversation={setActiveConversation}
+                            sendMessage={sendMessage}
+                            deleteChat={deleteChat}
+                            markAsRead={markAsRead}
+                            activeChatData={activeChatData}
+                            isMuted={isMuted}
+                            setIsMuted={setIsMuted}
                             isLocked={isLocked}
                         />
                     )}
@@ -577,11 +659,11 @@ export default function AdminPortal() {
                 </div>
             </div>
 
-            <ClientManager 
+            <ClientManager
                 selectedClient={selectedClient} setSelectedClient={setSelectedClient} handleKycUpdate={handleKycUpdate}
                 recoveryForm={recoveryForm} setRecoveryForm={setRecoveryForm} saveRecoveryInjection={saveRecoveryInjection}
                 depositForm={depositForm} setDepositForm={setDepositForm} saveDepositOverrides={saveDepositOverrides}
-                feeOverride={feeOverride} setFeeOverride={setFeeOverride} saveFeeOverride={saveFeeOverride} saving={saving}
+                feeForm={feeForm} setFeeForm={setFeeForm} saveFeeOverride={saveFeeOverride} saving={saving}
                 isLocked={isLocked}
             />
 

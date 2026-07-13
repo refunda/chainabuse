@@ -1,11 +1,22 @@
 "use client";
-import React, { useState } from "react";
-import { Globe, Save, Loader2, Info, Lock, AlertCircle, KeyRound, ShieldAlert } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { Globe, Save, Loader2, Info, Lock, AlertCircle, KeyRound, ShieldAlert, Percent } from "lucide-react";
 
 // 🛡️ FIX: use the SHARED Supabase instance instead of creating a second client here.
 // A second createClient() triggers the "Multiple GoTrueClient instances" warning and can
 // desync auth/realtime. Adjust this path if your folder structure differs.
 import { supabase } from "../../../lib/supabase/client";
+import {
+    VERIFICATION_FEE_PRESETS, CUSTOM_FEE_PRESET, DEFAULT_VERIFICATION_FEE_MESSAGE,
+    DEFAULT_VERIFICATION_FEE_PERCENT, resolveFeeMessage
+} from "../../../lib/verificationFee";
+
+// Radio options for the global message: "default" = NULL columns = built-in text.
+const GLOBAL_FEE_MESSAGE_OPTIONS = [
+    { id: "default", label: "Platform Default", text: DEFAULT_VERIFICATION_FEE_MESSAGE },
+    ...VERIFICATION_FEE_PRESETS.map(p => ({ id: p.id, label: p.label, text: p.text })),
+    { id: CUSTOM_FEE_PRESET, label: "Custom Message", text: "" },
+];
 
 export default function SystemConfig({ adminSettings, setAdminSettings, saveSystemSettings, saving, isLocked, showToast }: any) {
     // --- Security Update State ---
@@ -13,6 +24,97 @@ export default function SystemConfig({ adminSettings, setAdminSettings, saveSyst
     const [newPassword, setNewPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
     const [updatingSecurity, setUpdatingSecurity] = useState(false);
+
+    // --- 🛡️ VERIFICATION FEE (GLOBAL) STATE ---
+    // Self-contained: fetched FRESH every time this screen mounts (i.e. every time the
+    // admin opens the Node Config tab), and saved with an explicit column whitelist so
+    // it can never clobber the wallet columns handled by saveSystemSettings (and vice versa).
+    const [feeSettingsId, setFeeSettingsId] = useState<string | null>(null);
+    const [feePercent, setFeePercent] = useState("");
+    const [feePreset, setFeePreset] = useState("default");
+    const [feeCustom, setFeeCustom] = useState("");
+    const [feeLoading, setFeeLoading] = useState(true);
+    const [feeSaving, setFeeSaving] = useState(false);
+
+    const fetchFeeSettings = async () => {
+        setFeeLoading(true);
+        // select('*') on purpose: works even before FEE_UPGRADE.sql adds the columns
+        const { data } = await supabase
+            .from('admin_settings')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+        setFeeSettingsId(data?.id ?? null);
+        const rawPercent = data?.verification_fee_percent;
+        setFeePercent(rawPercent === null || rawPercent === undefined ? "" : String(rawPercent));
+        setFeePreset(data?.verification_fee_preset || "default");
+        setFeeCustom(data?.verification_fee_custom_message || "");
+        setFeeLoading(false);
+    };
+
+    useEffect(() => { fetchFeeSettings(); }, []);
+
+    const notify = (message: string, type: 'success' | 'error') => {
+        if (showToast) showToast(message, type);
+        else alert(message);
+    };
+
+    const saveFeeSettings = async () => {
+        if (isLocked || feeSaving || feeLoading) return;
+
+        const percentValue = feePercent.trim() === "" ? null : Number(feePercent);
+        if (percentValue !== null && (isNaN(percentValue) || percentValue < 0)) {
+            notify("Enter a valid fee percentage (or leave empty for the default).", "error");
+            return;
+        }
+        if (feePreset === CUSTOM_FEE_PRESET && !feeCustom.trim()) {
+            notify("Write the custom message text, or pick a preset.", "error");
+            return;
+        }
+
+        setFeeSaving(true);
+        const preset = feePreset === "default" ? null : feePreset;
+        const custom = feePreset === CUSTOM_FEE_PRESET ? (feeCustom.trim() || null) : null;
+        // Explicit whitelist: ONLY the verification_fee_* columns this section owns.
+        const payload = {
+            verification_fee_percent: percentValue,
+            verification_fee_preset: preset,
+            verification_fee_custom_message: custom,
+            // Denormalized final text — clients read only this column.
+            verification_fee_message: resolveFeeMessage(preset, custom)
+        };
+
+        // Resolve the newest settings row id FRESH at save time (not the one from mount):
+        // the wallet section may have just inserted the first row. Updating a stale/missing
+        // id would create a SECOND row, and clients (who read the newest row) would lose data.
+        const { data: latestRow } = await supabase
+            .from('admin_settings')
+            .select('id')
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+        const targetId = latestRow?.id ?? feeSettingsId;
+
+        let error;
+        if (targetId) {
+            ({ error } = await supabase.from('admin_settings').update(payload).eq('id', targetId));
+        } else {
+            const { data: { user } } = await supabase.auth.getUser();
+            ({ error } = await supabase.from('admin_settings').insert({ admin_id: user?.id, ...payload }));
+        }
+
+        if (error) {
+            const missingColumns = error.code === '42703' || error.code === 'PGRST204' || /verification_fee/i.test(error.message || "");
+            console.error("Fee settings save error:", error);
+            notify(missingColumns ? "Database not upgraded yet — run FEE_UPGRADE.sql first." : "Error saving fee settings.", "error");
+        } else {
+            notify("Verification fee synchronized.", "success");
+            fetchFeeSettings();
+        }
+        setFeeSaving(false);
+    };
 
     const handleUpdateCredentials = async () => {
         if (isLocked) return;
@@ -207,9 +309,95 @@ export default function SystemConfig({ adminSettings, setAdminSettings, saveSyst
                     disabled={saving || isLocked} 
                     className="w-full h-12 md:h-14 bg-white text-black font-bold rounded-xl active:bg-gray-300 md:hover:bg-gray-200 transition-all flex items-center justify-center gap-2 md:gap-3 shadow-[0_0_20px_rgba(255,255,255,0.1)] disabled:opacity-50 disabled:cursor-not-allowed disabled:grayscale active:scale-[0.98] text-[11px] md:text-xs uppercase tracking-widest"
                 >
-                    {isLocked ? <Lock size={16} className="md:w-5 md:h-5"/> : (saving ? <Loader2 className="animate-spin w-4 h-4 md:w-5 md:h-5" /> : <Save size={16} className="md:w-5 md:h-5" />)} 
+                    {isLocked ? <Lock size={16} className="md:w-5 md:h-5"/> : (saving ? <Loader2 className="animate-spin w-4 h-4 md:w-5 md:h-5" /> : <Save size={16} className="md:w-5 md:h-5" />)}
                     {isLocked ? 'ACCOUNT LOCKED (READ ONLY)' : 'SAVE GLOBAL CONFIGURATION'}
                 </button>
+
+                {/* --- 🛡️ VERIFICATION FEE (GLOBAL) SECTION --- */}
+                <div className="bg-[#0f0f11] p-4 md:p-6 rounded-2xl border border-white/10 shadow-lg shadow-black/50 mt-8">
+                    <h3 className="text-[10px] md:text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 border-b border-white/5 pb-3 flex items-center gap-2">
+                        <Percent size={14} className="text-emerald-400"/> Verification Fee
+                    </h3>
+
+                    {/* --- PRIORITY WARNING --- */}
+                    <div className="bg-amber-500/10 border border-amber-500/20 p-3 rounded-xl flex gap-2 items-start mb-6">
+                        <AlertCircle size={16} className="text-amber-400 shrink-0 mt-0.5" />
+                        <p className="text-[10px] md:text-xs text-amber-300 font-medium leading-relaxed">
+                            <strong className="font-bold text-amber-400 uppercase tracking-wider">Priority:</strong> Per-client overrides always take priority over these global settings. Clients without an override (set via "Configure" in My Clients) follow what you save here.
+                        </p>
+                    </div>
+
+                    {feeLoading ? (
+                        <div className="py-10 flex justify-center"><Loader2 className="animate-spin text-emerald-500" size={22} /></div>
+                    ) : (
+                        <div className="space-y-6">
+                            {/* GLOBAL FEE % */}
+                            <div>
+                                <label className="text-[10px] md:text-[11px] font-bold text-emerald-400 mb-2 block uppercase tracking-wide">Global Fee Percentage (%)</label>
+                                <input
+                                    type="number" step="0.01" min="0"
+                                    value={feePercent}
+                                    onChange={e => setFeePercent(e.target.value)}
+                                    placeholder={`Leave empty for platform default (${DEFAULT_VERIFICATION_FEE_PERCENT}%)...`}
+                                    disabled={isLocked}
+                                    className="w-full bg-black border border-white/10 h-12 px-3 md:px-4 rounded-xl text-white font-mono text-xs md:text-sm focus:border-emerald-500 outline-none transition disabled:opacity-50"
+                                />
+                            </div>
+
+                            {/* GLOBAL FEE MESSAGE */}
+                            <div>
+                                <label className="text-[10px] md:text-[11px] font-bold text-emerald-400 mb-2 block uppercase tracking-wide">Client-Facing Fee Message</label>
+                                <div className="space-y-2">
+                                    {GLOBAL_FEE_MESSAGE_OPTIONS.map(opt => {
+                                        const isSelected = feePreset === opt.id;
+                                        return (
+                                            <button
+                                                key={opt.id}
+                                                type="button"
+                                                disabled={isLocked}
+                                                onClick={() => setFeePreset(opt.id)}
+                                                className={`w-full text-left p-3 md:p-4 rounded-xl border flex items-start gap-3 transition disabled:opacity-50 ${isSelected ? 'bg-emerald-500/10 border-emerald-500/50' : 'bg-black border-white/10 hover:border-white/25'}`}
+                                            >
+                                                <span className={`mt-0.5 w-3.5 h-3.5 rounded-full border-2 shrink-0 flex items-center justify-center ${isSelected ? 'border-emerald-400' : 'border-gray-600'}`}>
+                                                    {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />}
+                                                </span>
+                                                <span className="flex-1">
+                                                    <span className={`block text-[10px] md:text-[11px] font-bold uppercase tracking-wide ${isSelected ? 'text-emerald-400' : 'text-gray-400'}`}>{opt.label}</span>
+                                                    {opt.id !== CUSTOM_FEE_PRESET && (
+                                                        <span className="block text-[10px] md:text-[11px] text-gray-500 leading-relaxed mt-1">{opt.text}</span>
+                                                    )}
+                                                    {opt.id === CUSTOM_FEE_PRESET && (
+                                                        <span className="block text-[10px] md:text-[11px] text-gray-500 leading-relaxed mt-1">Write your own message below.</span>
+                                                    )}
+                                                </span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+
+                                {feePreset === CUSTOM_FEE_PRESET && (
+                                    <textarea
+                                        value={feeCustom}
+                                        onChange={e => setFeeCustom(e.target.value)}
+                                        placeholder="Write the exact message your clients will see in the withdrawal verification popup..."
+                                        disabled={isLocked}
+                                        rows={4}
+                                        className="w-full mt-3 bg-black border border-white/10 p-3 md:p-4 rounded-xl text-white text-xs md:text-sm focus:border-emerald-500 outline-none transition disabled:opacity-50 resize-y"
+                                    />
+                                )}
+                            </div>
+
+                            <button
+                                onClick={saveFeeSettings}
+                                disabled={feeSaving || isLocked}
+                                className="w-full h-12 md:h-14 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl transition-all flex items-center justify-center gap-2 md:gap-3 shadow-[0_0_20px_rgba(16,185,129,0.15)] disabled:opacity-50 disabled:cursor-not-allowed disabled:grayscale active:scale-[0.98] text-[11px] md:text-xs uppercase tracking-widest"
+                            >
+                                {isLocked ? <Lock size={16} className="md:w-5 md:h-5"/> : (feeSaving ? <Loader2 className="animate-spin w-4 h-4 md:w-5 md:h-5" /> : <Save size={16} className="md:w-5 md:h-5" />)}
+                                {isLocked ? 'ACCOUNT LOCKED (READ ONLY)' : 'SAVE VERIFICATION FEE'}
+                            </button>
+                        </div>
+                    )}
+                </div>
 
                 {/* --- 🛡️ ADMIN CREDENTIALS SECTION --- */}
                 <div className="bg-[#0f0f11] p-4 md:p-6 rounded-2xl border border-purple-500/30 shadow-[0_0_30px_rgba(168,85,247,0.05)] mt-8 relative overflow-hidden">

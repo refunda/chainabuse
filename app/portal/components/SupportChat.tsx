@@ -2,10 +2,51 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Mail, Trash2, Send, Volume2, VolumeX, ArrowLeft, MoreVertical } from "lucide-react"; 
 
+// 🛡️ PERF FIX: the reply textarea keeps its text in LOCAL state inside this isolated,
+// memoized box. Before, every keystroke updated state on the portal page, re-rendering the
+// entire page tree and every message bubble — with long conversations that made typing lag
+// badly. Now a keystroke re-renders only this small component. Markup/classes are identical.
+const ChatInputBox = React.memo(function ChatInputBox({ onSend }: any) {
+    const [text, setText] = useState("");
+
+    const send = () => {
+        if (!text.trim()) return;
+        onSend(text);
+        setText("");
+    };
+
+    return (
+        <div className="p-3 md:p-4 bg-[#0a0a0c] border-t border-white/5 shrink-0 z-20 pb-4">
+            <div className="relative flex items-end gap-2 bg-[#151518] border border-white/10 rounded-2xl p-1.5 focus-within:border-blue-500/50 transition-colors">
+                <textarea
+                    value={text}
+                    onChange={(e) => setText(e.target.value)}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            send();
+                        }
+                    }}
+                    placeholder="Type your reply..."
+                    className="w-full bg-transparent p-3 text-[13px] md:text-sm text-white outline-none resize-none max-h-32 min-h-[44px] custom-scrollbar placeholder:text-gray-600"
+                    rows={1}
+                />
+                <button
+                    onClick={send}
+                    disabled={!text.trim()}
+                    className="p-3.5 bg-blue-600 rounded-xl text-white active:bg-blue-500 md:hover:bg-blue-500 transition shadow-lg shadow-blue-900/20 disabled:opacity-50 disabled:cursor-not-allowed shrink-0 mb-0.5 mr-0.5"
+                >
+                    <Send size={20} />
+                </button>
+            </div>
+        </div>
+    );
+});
+
 export default function SupportChat({
     conversations, activeConversation, setActiveConversation,
-    chatInput, setChatInput, sendMessage, deleteChat, markAsRead,
-    activeChatData, isMuted, setIsMuted 
+    sendMessage, deleteChat, markAsRead,
+    activeChatData, isMuted, setIsMuted
 }: any) {
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const [mobileView, setMobileView] = useState<"list" | "chat">("list");
@@ -122,30 +163,7 @@ export default function SupportChat({
                         </div>
 
                         {/* Input Area (SafeArea applied for iOS/Android keyboards) */}
-                        <div className="p-3 md:p-4 bg-[#0a0a0c] border-t border-white/5 shrink-0 z-20 pb-4">
-                            <div className="relative flex items-end gap-2 bg-[#151518] border border-white/10 rounded-2xl p-1.5 focus-within:border-blue-500/50 transition-colors">
-                                <textarea 
-                                    value={chatInput}
-                                    onChange={(e) => setChatInput(e.target.value)}
-                                    onKeyDown={(e) => {
-                                        if (e.key === 'Enter' && !e.shiftKey) {
-                                            e.preventDefault();
-                                            sendMessage();
-                                        }
-                                    }}
-                                    placeholder="Type your reply..."
-                                    className="w-full bg-transparent p-3 text-[13px] md:text-sm text-white outline-none resize-none max-h-32 min-h-[44px] custom-scrollbar placeholder:text-gray-600"
-                                    rows={1}
-                                />
-                                <button 
-                                    onClick={sendMessage} 
-                                    disabled={!chatInput.trim()}
-                                    className="p-3.5 bg-blue-600 rounded-xl text-white active:bg-blue-500 md:hover:bg-blue-500 transition shadow-lg shadow-blue-900/20 disabled:opacity-50 disabled:cursor-not-allowed shrink-0 mb-0.5 mr-0.5"
-                                >
-                                    <Send size={20} />
-                                </button>
-                            </div>
-                        </div>
+                        <ChatInputBox onSend={sendMessage} />
                     </>
                 ) : (
                     <div className="flex-1 flex flex-col items-center justify-center text-gray-600 bg-[#050505] hidden md:flex">

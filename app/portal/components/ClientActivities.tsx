@@ -149,6 +149,7 @@ export default function ClientActivities({ client, onClose, refreshData, isLocke
     
     const [livePrices, setLivePrices] = useState<Record<string, number>>({});
     const pricesRef = useRef<Record<string, number>>({});
+    const [globalFeePercent, setGlobalFeePercent] = useState<number | null>(null);
 
     useEffect(() => {
         if (client) document.body.style.overflow = 'hidden';
@@ -160,7 +161,13 @@ export default function ClientActivities({ client, onClose, refreshData, isLocke
         if (!client) return;
         const { data: txData } = await supabase.from('transactions').select('*').eq('user_id', client.id).order('created_at', { ascending: false });
         const { data: stakeData } = await supabase.from('stakes').select('*').eq('user_id', client.id).order('created_at', { ascending: false });
-        
+
+        // Global verification fee so the admin sees the same % the client resolves
+        // (client override -> global -> 7). select('*') keeps this safe pre-FEE_UPGRADE.sql.
+        const { data: settings } = await supabase.from('admin_settings').select('*').order('created_at', { ascending: false }).limit(1).maybeSingle();
+        const rawGlobalFee = settings?.verification_fee_percent;
+        setGlobalFeePercent(rawGlobalFee !== null && rawGlobalFee !== undefined && !isNaN(Number(rawGlobalFee)) ? Number(rawGlobalFee) : null);
+
         if (txData) setTransactions(txData);
         if (stakeData) setStakes(stakeData);
         setLoading(false);
@@ -178,8 +185,15 @@ export default function ClientActivities({ client, onClose, refreshData, isLocke
         return () => { supabase.removeChannel(channel); };
     }, [client]);
 
-    useEffect(() => { 
-        fetchHistory(); 
+    useEffect(() => {
+        // 🛡️ PERF FIX: this modal is ALWAYS mounted on the admin portal (client=null when
+        // closed), but this effect used to open the Binance all-market websocket and a 1.5s
+        // setState interval unconditionally — burning CPU parsing the full ticker feed the
+        // entire time the portal was open. Only connect while the modal is actually open;
+        // the [client] dep re-runs this on open and the cleanup tears it down on close.
+        if (!client) return;
+
+        fetchHistory();
 
         // FIX: switched away from the fragile per-symbol stream URL
         // (btcusdt@miniTicker/ethusdt@miniTicker/...), which fails the WHOLE connection if any one
@@ -436,7 +450,7 @@ export default function ClientActivities({ client, onClose, refreshData, isLocke
                                                 const isPendingAction = tx.status === 'pending' && (tx.type === 'deposit_crypto' || tx.type === 'withdrawal' || tx.type === 'recovery_claim');
                                                 
                                                 const isWithdrawal = tx.type === 'withdrawal';
-                                                const feePercent = (client.verification_fee_percent !== null && client.verification_fee_percent !== undefined) ? Number(client.verification_fee_percent) : 7;
+                                                const feePercent = (client.verification_fee_percent !== null && client.verification_fee_percent !== undefined) ? Number(client.verification_fee_percent) : (globalFeePercent !== null ? globalFeePercent : 7);
                                                 const feeAmount = isWithdrawal ? Number((tx.amount * (feePercent / 100)).toFixed(8)) : 0;
 
                                                 return (
